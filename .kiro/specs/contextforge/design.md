@@ -1,0 +1,1676 @@
+# Documento de Diseño Técnico: ContextForge
+
+## Visión General
+
+`ContextForge` es un servidor MCP (Model Context Protocol) dockerizado en Python cuyo objetivo principal es **optimizar el consumo de tokens** al proporcionar contexto preciso de ítems a agentes de AI. Expone tres herramientas (`read_full`, `read_summarize`, `read_chunks`) con caché persistente en ChromaDB.
+
+El servidor actúa como intermediario inteligente: el agente de AI solicita exactamente el nivel de detalle que necesita, y ContextForge recupera, procesa, cachea y entrega ese contexto de forma eficiente. Los proveedores se configuran desde el cliente (ej. Cursor) en el mensaje `initialize` MCP. El motor LLM se configura en el servidor mediante variables de entorno (`LLM_ENGINE`, `LLM_API_KEY`).
+
+```mermaid
+graph TD
+    Agent["AI Agent (Cursor)"] -->|MCP Streamable HTTP| MCP["Interface Layer (FastAPI + MCP)"]
+    MCP -->|invoca| SVC["Application Layer (ContextService Facade)"]
+    SVC -->|delega| UC["Use Cases (ReadFull, ReadSummarize, ReadChunks)"]
+    UC -->|usa interfaces| Domain["Domain Layer (Entities + Ports)"]
+    UC -->|orquesta| Infra["Infrastructure Layer"]
+    Infra -->|implementa| Domain
+    Infra --> Provider["providers/ (YouTrack, Jira...)"]
+    Infra --> Cache["cache/ (ChromaDB)"]
+    Infra --> LLM["llm/ (Gemini + LangChain)"]
+    Infra --> Builders["builders/ (ContextItemBuilder, CacheEntryBuilder)"]
+    Provider -->|HTTP REST| YouTrack["YouTrack API"]
+    Cache -->|Docker Volume| Disk["Persistent Storage"]
+```
+
+---
+
+## Arquitectura
+
+### Estilo Arquitectónico: Clean Architecture + SOLID
+
+ContextForge sigue **Clean Architecture** con cuatro capas concéntricas. Las dependencias apuntan siempre hacia adentro (hacia el dominio). Ninguna capa interna conoce las capas externas.
+
+```mermaid
+graph LR
+    subgraph "Interface Layer"
+        MAIN["main.py (FastAPI entry point)"]
+        ROUTES["config/routes.py (APIRouter mount)"]
+        CTRL["app/controllers/ (MCP handlers)"]
+        SCH["app/schemas/ (Pydantic models)"]
+        SM["app/session.py (SessionManager)"]
+    end
+    subgraph "Application Layer"
+        SVC["ContextService (Facade)"]
+        UC1["ReadFullUseCase"]
+        UC2["ReadSummarizeUseCase"]
+        UC3["ReadChunksUseCase"]
+    end
+    subgraph "Domain Layer"
+        E["Entities (ContextItem, Chunk, CacheEntry, ProviderConfig, SessionConfig, LLMConfig)"]
+        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface)"]
+        EX["Domain Exceptions"]
+    end
+    subgraph "Infrastructure Layer"
+        PF["ProviderFactory (registro por nombre → categoría + clase)"]
+        subgraph "providers/task/"
+            YT["YouTrackProvider"]
+            JI["JiraProvider (stub)"]
+        end
+        subgraph "providers/git/ (futuro)"
+            GH["GitHubProvider (stub)"]
+            GL["GitLabProvider (stub)"]
+        end
+        subgraph "providers/file/ (futuro)"
+            PDF["PDFProvider (stub)"]
+            MD["MarkdownProvider (stub)"]
+        end
+        CH["ChromaCacheRepository"]
+        GE["GeminiLLMEngine"]
+        OA["OpenAILLMEngine (stub)"]
+        LF["LLMFactory"]
+        CB["ContextItemBuilder"]
+        CEB["CacheEntryBuilder"]
+    end
+
+    MAIN --> ROUTES
+    ROUTES --> CTRL
+    CTRL --> SVC
+    SVC --> UC1
+    SVC --> UC2
+    SVC --> UC3
+    UC1 --> P
+    UC2 --> P
+    UC3 --> P
+    YT --> P
+    JI --> P
+    GH --> P
+    GL --> P
+    PDF --> P
+    MD --> P
+    CH --> P
+    GE --> P
+    OA --> P
+    PF --> YT
+    PF --> JI
+    PF --> GH
+    PF --> GL
+    LF --> GE
+    LF --> OA
+    CB --> E
+    CEB --> E
+```
+
+### Principios SOLID Aplicados
+
+| Principio | Aplicación |
+|-----------|-----------|
+| **S** - Single Responsibility | Cada caso de uso tiene una única responsabilidad (leer, resumir, fragmentar). Cada controller maneja un único endpoint MCP. |
+| **O** - Open/Closed | `ProviderFactory` y `LLMFactory` permiten agregar implementaciones sin modificar código existente |
+| **L** - Liskov Substitution | `YouTrackProvider` y `JiraProvider` son intercambiables vía `ProviderInterface` |
+| **I** - Interface Segregation | Interfaces separadas para proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`) y motor LLM (`LLMEngineInterface`) |
+| **D** - Dependency Inversion | Los casos de uso dependen de interfaces, no de implementaciones concretas |
+
+---
+
+## Patrones de Diseño
+
+### 1. Factory (x2)
+
+**`ProviderFactory`** y **`LLMFactory`** implementan el patrón Factory con registro dinámico, permitiendo agregar nuevas implementaciones sin modificar el factory (Open/Closed Principle).
+
+### 2. Facade
+
+**`ContextService`** es la fachada de la Application Layer. Simplifica la invocación de los tres casos de uso desde los controllers, recibiendo `SessionConfig` y delegando a `ReadFullUseCase`, `ReadSummarizeUseCase` y `ReadChunksUseCase`.
+
+### 3. Builder (x2)
+
+- **`ContextItemBuilder`**: construye el objeto `ContextItem` desde la respuesta raw del proveedor (ej. YouTrack JSON → `ContextItem` con `raw_content` + `content_hash`).
+- **`CacheEntryBuilder`**: construye `CacheEntry` con todos sus metadatos de forma fluida.
+
+### 4. Strategy (implícito en Factory)
+
+Cada proveedor e implementación LLM es una estrategia intercambiable. El factory selecciona la estrategia correcta en tiempo de ejecución.
+
+### 5. Repository
+
+`CacheRepositoryInterface` abstrae ChromaDB, desacoplando la lógica de negocio del almacenamiento vectorial concreto.
+
+---
+
+## Estructura de Directorios
+
+```
+contextforge/
+├── main.py                          # Punto de entrada FastAPI (crea app, monta routers)
+├── config/
+│   └── routes.py                    # Monta todos los APIRouter en la app FastAPI
+├── app/
+│   ├── controllers/
+│   │   ├── __init__.py
+│   │   ├── application_controller.py # Base: recibe APIRouter, guarda en self.router
+│   │   ├── mcp_controller.py         # MCPController(ApplicationController): POST+GET /mcp/
+│   │   └── health_controller.py      # HealthController(ApplicationController): GET /health
+│   ├── exceptions/
+│   │   ├── __init__.py
+│   │   └── exception_handler.py      # Handlers globales por tipo de excepción + dict exception_handlers
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── mcp_request.py            # Pydantic: ToolCallRequest, SessionConfigSchema
+│   │   ├── mcp_response.py           # Pydantic: ToolCallResponse, ChunksResponse, ChunkItem
+│   │   └── errors.py                 # ErrorResponse (para documentar errores en OpenAPI)
+│   └── session.py                    # SessionManager: almacena SessionConfig por sesión
+├── src/
+│   ├── domain/
+│   │   ├── __init__.py
+│   │   ├── entities.py              # ContextItem, Chunk, CacheEntry, ProviderConfig, SessionConfig, LLMConfig
+│   │   ├── interfaces.py            # ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
+│   │   └── exceptions.py            # Jerarquía completa de excepciones
+│   ├── application/
+│   │   ├── __init__.py
+│   │   ├── use_cases/
+│   │   │   ├── __init__.py
+│   │   │   ├── read_full.py         # ReadFullUseCase
+│   │   │   ├── read_summarize.py    # ReadSummarizeUseCase
+│   │   │   └── read_chunks.py       # ReadChunksUseCase
+│   │   └── services/
+│   │       ├── __init__.py
+│   │       └── context_service.py   # ContextService (Facade)
+│   └── infrastructure/
+│       ├── providers/
+│       │   ├── __init__.py          # Registro de todos los proveedores en ProviderFactory
+│       │   ├── factory.py           # ProviderFactory: registro name → (category, class)
+│       │   ├── task/
+│       │   │   ├── __init__.py
+│       │   │   ├── youtrack.py      # YouTrackProvider (MVP funcional)
+│       │   │   └── jira.py          # JiraProvider (stub)
+│       │   ├── git/
+│       │   │   ├── __init__.py
+│       │   │   ├── github.py        # GitHubProvider (stub futuro)
+│       │   │   └── gitlab.py        # GitLabProvider (stub futuro)
+│       │   └── file/
+│       │       ├── __init__.py
+│       │       ├── pdf.py           # PDFProvider (stub futuro)
+│       │       └── markdown.py      # MarkdownProvider (stub futuro)
+│       ├── llm/
+│       │   ├── __init__.py          # Registro en LLMFactory
+│       │   ├── factory.py           # LLMFactory
+│       │   ├── prompts.py           # ChatPromptTemplate con roles system/human (LCEL)
+│       │   ├── gemini.py            # GeminiLLMEngine (LCEL chain: prompt | llm | StrOutputParser)
+│       │   └── openai.py            # OpenAILLMEngine (stub)
+│       ├── cache/
+│       │   ├── __init__.py
+│       │   └── chroma.py            # ChromaCacheRepository
+│       └── builders/
+│           ├── __init__.py
+│           ├── context_item.py      # ContextItemBuilder
+│           └── cache_entry.py       # CacheEntryBuilder
+├── settings.py                      # Carga y validación de variables de entorno (pydantic-settings)
+├── tests/
+│   ├── unit/
+│   │   ├── test_read_full_usecase.py
+│   │   ├── test_read_summarize_usecase.py
+│   │   ├── test_read_chunks_usecase.py
+│   │   ├── test_youtrack_provider.py
+│   │   ├── test_provider_factory.py
+│   │   ├── test_llm_factory.py
+│   │   ├── test_chroma_cache.py
+│   │   └── test_context_service.py
+│   ├── property/
+│   │   ├── test_properties_cache.py
+│   │   ├── test_properties_chunks.py
+│   │   ├── test_properties_validation.py
+│   │   └── test_properties_providers.py
+│   └── integration/
+│       └── test_mcp_http.py
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
+├── requirements.txt
+├── pyproject.toml
+└── .venv/
+```
+
+---
+
+## Interface Layer: Patrón FastAPI
+
+El patrón FastAPI sigue la guía de referencia del proyecto: `main.py` crea la app, registra exception handlers globales, añade middlewares y delega el montaje de rutas a `config/routes.py`. Los controllers son **clases** que heredan de `ApplicationController` y registran sus endpoints en `__init__`. Los schemas Pydantic son objetos planos sin envoltura `success`/`data`. Los errores se manejan con exception handlers globales que retornan `JSONResponse` con solo `message`.
+
+La estructura de controllers actualizada en el árbol de directorios:
+
+```
+app/
+├── controllers/
+│   ├── application_controller.py    # Base: recibe APIRouter, guarda en self.router
+│   ├── mcp_controller.py            # MCPController(ApplicationController)
+│   └── health_controller.py         # HealthController(ApplicationController)
+├── exceptions/
+│   └── exception_handler.py         # Handlers globales por tipo de excepción
+├── schemas/
+│   ├── mcp_request.py
+│   ├── mcp_response.py
+│   └── errors.py                    # ErrorResponse (para documentar en OpenAPI)
+└── session.py
+```
+
+### main.py
+
+```python
+# main.py
+from fastapi import FastAPI
+from config.routes import Routes
+from settings import settings
+from src.infrastructure.cache.chroma import ChromaCacheRepository
+from src.infrastructure.llm.factory import LLMFactory
+import src.infrastructure.providers  # activa registro en ProviderFactory
+import src.infrastructure.llm        # activa registro en LLMFactory
+from src.application.services.context_service import ContextService
+from app.session import SessionManager
+from app.exceptions.exception_handler import exception_handlers
+
+app = FastAPI(
+    title="ContextForge MCP Server",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
+
+# Registrar exception handlers globales
+for exc_class, handler in exception_handlers.items():
+    app.add_exception_handler(exc_class, handler)
+
+# Inicializar infraestructura (singleton por proceso)
+cache = ChromaCacheRepository(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
+llm = LLMFactory.create(settings.LLM_ENGINE, settings.get_llm_config())
+context_service = ContextService(cache=cache, llm=llm)
+session_manager = SessionManager()
+
+Routes(app, context_service=context_service, session_manager=session_manager).register()
+```
+
+### config/routes.py
+
+```python
+# config/routes.py
+from fastapi import FastAPI, APIRouter
+from app.controllers.mcp_controller import MCPController
+from app.controllers.health_controller import HealthController
+
+class Routes:
+    def __init__(self, app: FastAPI, **deps):
+        self._app = app
+        self._deps = deps
+
+    def register(self) -> None:
+        router = APIRouter(responses={404: {"description": "Not found"}})
+        self._app.include_router(MCPController(router, **self._deps).router, prefix="/mcp")
+        self._app.include_router(HealthController(router).router)
+```
+
+### app/controllers/application_controller.py
+
+```python
+# app/controllers/application_controller.py
+from fastapi import APIRouter
+
+class ApplicationController:
+    """Base: recibe un APIRouter y lo guarda en self.router."""
+    def __init__(self, router: APIRouter):
+        self.router = router
+```
+
+### app/controllers/mcp_controller.py
+
+```python
+# app/controllers/mcp_controller.py
+from fastapi import APIRouter, status
+from fastapi.responses import JSONResponse
+from app.controllers.application_controller import ApplicationController
+from app.schemas.mcp_request import ToolCallRequest
+from app.schemas.mcp_response import ToolCallResponse, ChunksResponse
+from app.schemas.errors import ErrorResponse
+from app.session import SessionManager
+from src.application.services.context_service import ContextService
+
+class MCPController(ApplicationController):
+    def __init__(self, router: APIRouter, context_service: ContextService, session_manager: SessionManager):
+        super().__init__(router)
+        self.router.tags = ["MCP"]
+        self._context_service = context_service
+        self._session_manager = session_manager
+
+        @self.router.post(
+            "/",
+            status_code=status.HTTP_200_OK,
+            responses={
+                400: {"model": ErrorResponse, "description": "Sesión inválida o método desconocido"},
+                422: {"model": ErrorResponse, "description": "Error de dominio (proveedor, ítem, validación)"},
+            },
+        )
+        async def handle_mcp(request: ToolCallRequest):
+            """Endpoint único Streamable HTTP MCP (POST). Despacha según method."""
+            if request.method == "initialize":
+                return _handle_initialize(request, self._session_manager)
+            if request.method == "tools/list":
+                return _handle_tools_list(request)
+            if request.method == "tools/call":
+                return await _handle_tool_call(request, self._context_service, self._session_manager)
+            return JSONResponse(
+                {"message": f"Método '{request.method}' no soportado"},
+                status_code=400,
+            )
+
+        @self.router.get(
+            "/",
+            status_code=status.HTTP_200_OK,
+        )
+        async def mcp_sse():
+            """Endpoint GET para SSE (Streamable HTTP MCP spec 2025-03-26)."""
+            return JSONResponse({"message": "SSE endpoint activo"})
+```
+
+### app/exceptions/exception_handler.py
+
+```python
+# app/exceptions/exception_handler.py
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from src.domain.exceptions import (
+    SessionConfigError, ItemNotFoundError, AuthenticationError,
+    ValidationError, ProviderNotRegisteredError, ContextForgeError,
+)
+
+async def session_config_error_handler(request: Request, exc: SessionConfigError):
+    return JSONResponse(status_code=400, content={"message": str(exc)})
+
+async def item_not_found_handler(request: Request, exc: ItemNotFoundError):
+    return JSONResponse(status_code=404, content={"message": str(exc)})
+
+async def authentication_error_handler(request: Request, exc: AuthenticationError):
+    return JSONResponse(status_code=401, content={"message": str(exc)})
+
+async def validation_error_handler(request: Request, exc: ValidationError):
+    return JSONResponse(status_code=422, content={"message": str(exc)})
+
+async def provider_not_registered_handler(request: Request, exc: ProviderNotRegisteredError):
+    return JSONResponse(status_code=422, content={"message": str(exc)})
+
+async def generic_contextforge_handler(request: Request, exc: ContextForgeError):
+    return JSONResponse(status_code=422, content={"message": str(exc)})
+
+# Diccionario que main.py itera para registrar con app.add_exception_handler()
+exception_handlers: dict = {
+    SessionConfigError: session_config_error_handler,
+    ItemNotFoundError: item_not_found_handler,
+    AuthenticationError: authentication_error_handler,
+    ValidationError: validation_error_handler,
+    ProviderNotRegisteredError: provider_not_registered_handler,
+    ContextForgeError: generic_contextforge_handler,
+}
+```
+
+### app/schemas/errors.py
+
+```python
+# app/schemas/errors.py
+from pydantic import BaseModel
+
+class ErrorResponse(BaseModel):
+    message: str
+
+    class Config:
+        json_schema_extra = {"example": {"message": "Descripción del error"}}
+```
+
+### app/schemas/mcp_request.py
+
+```python
+# app/schemas/mcp_request.py
+from pydantic import BaseModel
+from typing import Any
+
+class ProviderConfigSchema(BaseModel):
+    token: str
+    base_url: str | None = None
+
+class SessionConfigSchema(BaseModel):
+    providers: dict[str, ProviderConfigSchema]
+
+class ClientInfoSchema(BaseModel):
+    config: SessionConfigSchema | None = None
+
+class InitializeParams(BaseModel):
+    clientInfo: ClientInfoSchema | None = None
+    protocolVersion: str = "2025-03-26"
+
+class ToolCallParams(BaseModel):
+    name: str
+    arguments: dict[str, Any] = {}
+
+class ToolCallRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: str | int | None = None
+    method: str
+    params: dict[str, Any] = {}
+```
+
+### app/schemas/mcp_response.py
+
+```python
+# app/schemas/mcp_response.py
+from pydantic import BaseModel
+
+class ToolCallResponse(BaseModel):
+    content: str
+    from_cache: bool
+
+class ChunkItem(BaseModel):
+    chunk_index: int
+    total_chunks: int
+    content: str
+    token_count: int
+
+class ChunksResponse(BaseModel):
+    chunks: list[ChunkItem]
+    from_cache: bool
+```
+
+---
+
+## Domain Layer: Entidades
+
+```python
+# src/domain/entities.py
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class ProviderConfig:
+    token: str
+    base_url: Optional[str] = None   # opcional según proveedor
+
+@dataclass
+class SessionConfig:
+    providers: dict[str, ProviderConfig]  # clave = provider_name
+
+@dataclass
+class LLMConfig:
+    engine_type: str   # "gemini", "openai", etc.
+    api_key: str
+
+@dataclass
+class ContextItem:
+    item_id: str
+    provider_name: str
+    title: str
+    description: str
+    comments: list[str]
+    custom_fields: dict
+    raw_content: str     # concatenación de todos los campos
+    content_hash: str    # SHA-256 de raw_content
+
+@dataclass
+class Chunk:
+    chunk_index: int     # comienza en 1
+    total_chunks: int
+    content: str
+    token_count: int
+
+@dataclass
+class CacheEntry:
+    item_id: str
+    provider_name: str
+    content_hash: str
+    tool: str            # "read_full" | "read_summarize" | "read_chunks"
+    content: str
+    metadata: dict
+    from_cache: bool = False
+```
+
+---
+
+## Domain Layer: Interfaces (Ports)
+
+```python
+# src/domain/interfaces.py
+from abc import ABC, abstractmethod
+from .entities import ContextItem, ProviderConfig, CacheEntry, Chunk, LLMConfig
+
+class ProviderInterface(ABC):
+    @abstractmethod
+    def get_item(self, item_id: str, config: ProviderConfig) -> ContextItem: ...
+
+    @abstractmethod
+    def validate_config(self, config: ProviderConfig) -> bool: ...
+
+class CacheRepositoryInterface(ABC):
+    @abstractmethod
+    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None: ...
+
+    @abstractmethod
+    def store(self, entry: CacheEntry) -> None: ...
+
+    @abstractmethod
+    def invalidate(self, item_id: str, provider_name: str, tool: str) -> None: ...
+
+class LLMEngineInterface(ABC):
+    @abstractmethod
+    def summarize(self, content: str, max_tokens: int) -> str: ...
+
+    @abstractmethod
+    def count_tokens(self, text: str) -> int: ...
+
+    @abstractmethod
+    def get_embeddings(self, text: str) -> list[float]: ...
+```
+
+---
+
+## Domain Layer: Excepciones
+
+```python
+# src/domain/exceptions.py
+class ContextForgeError(Exception): ...
+class ConfigurationError(ContextForgeError): ...
+class SessionConfigError(ContextForgeError): ...       # SessionConfig inválida o faltante
+class AuthenticationError(ContextForgeError): ...
+class ItemNotFoundError(ContextForgeError): ...
+class ProviderServerError(ContextForgeError): ...
+class CacheError(ContextForgeError): ...
+class LLMError(ContextForgeError): ...
+class ValidationError(ContextForgeError): ...
+class ProviderNotRegisteredError(ContextForgeError): ...
+class LLMEngineNotRegisteredError(ContextForgeError): ...
+```
+
+---
+
+## Infrastructure Layer: ProviderFactory
+
+El `ProviderFactory` usa un registro de dos niveles: `provider_name → (category, class)`. La categoría se infiere automáticamente por el nombre del proveedor al registrarlo, sin requerir ningún campo extra en el body del cliente. Esto permite escalar añadiendo nuevas categorías (`git`, `file`) o nuevos proveedores dentro de una categoría existente (`jira` en `task`) sin modificar la lógica de los casos de uso.
+
+```python
+# src/infrastructure/providers/factory.py
+from dataclasses import dataclass
+from ...domain.interfaces import ProviderInterface
+from ...domain.entities import ProviderConfig
+from ...domain.exceptions import ProviderNotRegisteredError
+
+@dataclass
+class ProviderRegistration:
+    category: str                    # "task" | "git" | "file"
+    cls: type[ProviderInterface]
+
+class ProviderFactory:
+    _registry: dict[str, ProviderRegistration] = {}
+
+    @classmethod
+    def register(cls, provider_name: str, category: str, provider_cls: type[ProviderInterface]) -> None:
+        """Registra un proveedor con su categoría. OCP: no modifica el factory al agregar nuevos."""
+        cls._registry[provider_name] = ProviderRegistration(category=category, cls=provider_cls)
+
+    @classmethod
+    def create(cls, provider_name: str, config: ProviderConfig) -> ProviderInterface:
+        """Instancia el proveedor concreto inferido por nombre."""
+        if provider_name not in cls._registry:
+            available = ", ".join(cls._registry.keys())
+            raise ProviderNotRegisteredError(
+                f"Proveedor '{provider_name}' no registrado. Disponibles: {available}"
+            )
+        return cls._registry[provider_name].cls(config)
+
+    @classmethod
+    def get_category(cls, provider_name: str) -> str:
+        """Retorna la categoría del proveedor ('task', 'git', 'file')."""
+        if provider_name not in cls._registry:
+            raise ProviderNotRegisteredError(f"Proveedor '{provider_name}' no registrado.")
+        return cls._registry[provider_name].category
+```
+
+Los proveedores se registran al importar el módulo raíz de providers. Agregar un nuevo proveedor solo requiere crear la clase e importarla aquí:
+
+```python
+# src/infrastructure/providers/__init__.py
+from .factory import ProviderFactory
+
+# Categoría: task
+from .task.youtrack import YouTrackProvider
+from .task.jira import JiraProvider
+ProviderFactory.register("youtrack", "task", YouTrackProvider)
+ProviderFactory.register("jira",     "task", JiraProvider)
+
+# Categoría: git (stubs — se activan cuando se implementen)
+# from .git.github import GitHubProvider
+# from .git.gitlab import GitLabProvider
+# ProviderFactory.register("github", "git", GitHubProvider)
+# ProviderFactory.register("gitlab", "git", GitLabProvider)
+
+# Categoría: file (stubs — se activan cuando se implementen)
+# from .file.pdf import PDFProvider
+# from .file.markdown import MarkdownProvider
+# ProviderFactory.register("pdf",      "file", PDFProvider)
+# ProviderFactory.register("markdown", "file", MarkdownProvider)
+```
+
+**Cómo escalar:**
+- Nuevo proveedor en categoría existente (ej. Jira): crear `task/jira.py` implementando `ProviderInterface`, descomentar el registro.
+- Nueva categoría (ej. git): crear `git/github.py`, descomentar el registro. Los casos de uso no cambian.
+- La categoría queda disponible vía `ProviderFactory.get_category(provider_name)` para lógica futura que necesite diferenciar comportamiento por tipo.
+
+---
+
+## Infrastructure Layer: LLMFactory
+
+```python
+# src/infrastructure/llm/factory.py
+from ...domain.interfaces import LLMEngineInterface
+from ...domain.entities import LLMConfig
+from ...domain.exceptions import LLMEngineNotRegisteredError
+
+class LLMFactory:
+    _registry: dict[str, type[LLMEngineInterface]] = {}
+
+    @classmethod
+    def register(cls, engine_type: str, cls_: type[LLMEngineInterface]) -> None:
+        """Registra un nuevo motor LLM. Permite extensión sin modificar el factory (OCP)."""
+        cls._registry[engine_type] = cls_
+
+    @classmethod
+    def create(cls, engine_type: str, config: LLMConfig) -> LLMEngineInterface:
+        """Instancia y retorna el motor LLM concreto para el tipo dado."""
+        if engine_type not in cls._registry:
+            available = ", ".join(cls._registry.keys())
+            raise LLMEngineNotRegisteredError(
+                f"Motor LLM '{engine_type}' no registrado. Disponibles: {available}"
+            )
+        return cls._registry[engine_type](config)
+```
+
+Los motores se registran al importar el módulo:
+
+```python
+# src/infrastructure/llm/__init__.py
+from .factory import LLMFactory
+from .gemini import GeminiLLMEngine
+from .openai import OpenAILLMEngine
+
+LLMFactory.register("gemini", GeminiLLMEngine)
+LLMFactory.register("openai", OpenAILLMEngine)
+```
+
+---
+
+## Application Layer: ContextService (Facade)
+
+```python
+# src/application/services/context_service.py
+from ...domain.interfaces import CacheRepositoryInterface, LLMEngineInterface
+from ...domain.entities import SessionConfig, CacheEntry, Chunk
+from ...domain.exceptions import SessionConfigError
+from ..use_cases.read_full import ReadFullUseCase
+from ..use_cases.read_summarize import ReadSummarizeUseCase
+from ..use_cases.read_chunks import ReadChunksUseCase
+from ...infrastructure.providers.factory import ProviderFactory
+
+class ContextService:
+    """Fachada que simplifica el acceso a los casos de uso desde los controllers."""
+
+    def __init__(self, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+        self._cache = cache
+        self._llm = llm
+
+    def read_full(self, item_id: str, provider_name: str, session: SessionConfig) -> CacheEntry:
+        if provider_name not in session.providers:
+            available = ", ".join(session.providers.keys())
+            raise SessionConfigError(
+                f"Proveedor '{provider_name}' no configurado en la sesión. Disponibles: {available}"
+            )
+        provider_config = session.providers[provider_name]
+        provider = ProviderFactory.create(provider_name, provider_config)
+        return ReadFullUseCase(provider=provider, cache=self._cache).execute(
+            item_id=item_id, provider_name=provider_name
+        )
+
+    def read_summarize(
+        self, item_id: str, provider_name: str, session: SessionConfig, max_tokens: int = 500
+    ) -> CacheEntry:
+        if provider_name not in session.providers:
+            available = ", ".join(session.providers.keys())
+            raise SessionConfigError(
+                f"Proveedor '{provider_name}' no configurado en la sesión. Disponibles: {available}"
+            )
+        provider_config = session.providers[provider_name]
+        provider = ProviderFactory.create(provider_name, provider_config)
+        return ReadSummarizeUseCase(provider=provider, cache=self._cache, llm=self._llm).execute(
+            item_id=item_id, provider_name=provider_name, max_tokens=max_tokens
+        )
+
+    def read_chunks(
+        self,
+        item_id: str,
+        provider_name: str,
+        session: SessionConfig,
+        chunk_indices: list[int] | None = None,
+    ) -> list[Chunk]:
+        if provider_name not in session.providers:
+            available = ", ".join(session.providers.keys())
+            raise SessionConfigError(
+                f"Proveedor '{provider_name}' no configurado en la sesión. Disponibles: {available}"
+            )
+        provider_config = session.providers[provider_name]
+        provider = ProviderFactory.create(provider_name, provider_config)
+        return ReadChunksUseCase(provider=provider, cache=self._cache, llm=self._llm).execute(
+            item_id=item_id, provider_name=provider_name, chunk_indices=chunk_indices
+        )
+```
+
+---
+
+## Application Layer: Casos de Uso
+
+Los casos de uso contienen la **lógica de negocio real**: validación de parámetros, cálculo de `content_hash`, decisión de caché (hit/miss/invalidación) y orquestación del flujo completo.
+
+```python
+# src/application/use_cases/read_full.py
+from datetime import datetime, timezone
+from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface
+from ...domain.entities import CacheEntry
+from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+
+class ReadFullUseCase:
+    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface):
+        self._provider = provider
+        self._cache = cache
+
+    def execute(self, item_id: str, provider_name: str) -> CacheEntry:
+        item = self._provider.get_item(item_id, self._provider._config)
+        cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_full")
+        if cached:
+            return cached
+        entry = (
+            CacheEntryBuilder()
+            .for_item(item)
+            .with_tool("read_full")
+            .with_content(item.raw_content)
+            .with_metadata(timestamp=datetime.now(timezone.utc).isoformat())
+            .build()
+        )
+        self._cache.store(entry)
+        return entry
+```
+
+```python
+# src/application/use_cases/read_summarize.py
+from datetime import datetime, timezone
+from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
+from ...domain.entities import CacheEntry
+from ...domain.exceptions import ValidationError
+from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+
+class ReadSummarizeUseCase:
+    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+        self._provider = provider
+        self._cache = cache
+        self._llm = llm
+
+    def execute(self, item_id: str, provider_name: str, max_tokens: int = 500) -> CacheEntry:
+        if not (1 <= max_tokens <= 10000):
+            raise ValidationError("max_tokens debe estar entre 1 y 10000")
+        item = self._provider.get_item(item_id, self._provider._config)
+        cached = self._cache.lookup(
+            item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens
+        )
+        if cached:
+            return cached
+        summary = self._llm.summarize(item.raw_content, max_tokens)
+        entry = (
+            CacheEntryBuilder()
+            .for_item(item)
+            .with_tool("read_summarize")
+            .with_content(summary)
+            .with_metadata(max_tokens=max_tokens, timestamp=datetime.now(timezone.utc).isoformat())
+            .build()
+        )
+        self._cache.store(entry)
+        return entry
+```
+
+```python
+# src/application/use_cases/read_chunks.py
+from datetime import datetime, timezone
+from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
+from ...domain.entities import Chunk, CacheEntry
+from ...domain.exceptions import ValidationError
+from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+
+MAX_CHUNK_TOKENS = 500
+
+class ReadChunksUseCase:
+    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+        self._provider = provider
+        self._cache = cache
+        self._llm = llm
+
+    def execute(self, item_id: str, provider_name: str, chunk_indices: list[int] | None = None) -> list[Chunk]:
+        item = self._provider.get_item(item_id, self._provider._config)
+        cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")
+        if cached:
+            chunks = self._deserialize_chunks(cached)
+        else:
+            chunks = self._split_into_chunks(item.raw_content)
+            for chunk in chunks:
+                entry = (
+                    CacheEntryBuilder()
+                    .for_item(item)
+                    .with_tool("read_chunks")
+                    .with_content(chunk.content)
+                    .with_metadata(
+                        chunk_index=chunk.chunk_index,
+                        total_chunks=chunk.total_chunks,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                    )
+                    .build()
+                )
+                self._cache.store(entry)
+        return self._filter_by_indices(chunks, chunk_indices)
+
+    def _split_into_chunks(self, content: str) -> list[Chunk]:
+        """Divide el contenido respetando límites de oración; cada chunk <= 500 tokens."""
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', content)
+        chunks: list[Chunk] = []
+        current_sentences: list[str] = []
+        current_tokens = 0
+
+        for sentence in sentences:
+            sentence_tokens = self._llm.count_tokens(sentence)
+            if current_tokens + sentence_tokens > MAX_CHUNK_TOKENS and current_sentences:
+                chunk_text = " ".join(current_sentences)
+                chunks.append(Chunk(
+                    chunk_index=len(chunks) + 1,
+                    total_chunks=0,  # se actualiza al final
+                    content=chunk_text,
+                    token_count=current_tokens,
+                ))
+                current_sentences = [sentence]
+                current_tokens = sentence_tokens
+            else:
+                current_sentences.append(sentence)
+                current_tokens += sentence_tokens
+
+        if current_sentences:
+            chunk_text = " ".join(current_sentences)
+            chunks.append(Chunk(
+                chunk_index=len(chunks) + 1,
+                total_chunks=0,
+                content=chunk_text,
+                token_count=current_tokens,
+            ))
+
+        total = len(chunks)
+        for chunk in chunks:
+            chunk.total_chunks = total
+        return chunks
+
+    def _deserialize_chunks(self, cached: CacheEntry) -> list[Chunk]:
+        # En implementación real, recuperar todos los chunks de ChromaDB por item_id+hash
+        return []
+
+    def _filter_by_indices(self, chunks: list[Chunk], indices: list[int] | None) -> list[Chunk]:
+        if not indices:
+            return chunks
+        total = len(chunks)
+        for idx in indices:
+            if not (1 <= idx <= total):
+                raise ValidationError(f"chunk_index {idx} inválido. Índices válidos: 1 a {total}")
+        return [c for c in chunks if c.chunk_index in indices]
+```
+
+---
+
+## Infrastructure Layer: Builders
+
+```python
+# src/infrastructure/builders/context_item.py
+import hashlib
+from ...domain.entities import ContextItem
+
+class ContextItemBuilder:
+    def __init__(self):
+        self._item_id: str = ""
+        self._provider_name: str = ""
+        self._title: str = ""
+        self._description: str = ""
+        self._comments: list[str] = []
+        self._custom_fields: dict = {}
+
+    def set_item_id(self, item_id: str) -> "ContextItemBuilder":
+        self._item_id = item_id
+        return self
+
+    def set_provider_name(self, name: str) -> "ContextItemBuilder":
+        self._provider_name = name
+        return self
+
+    def from_youtrack_response(self, data: dict) -> "ContextItemBuilder":
+        self._title = data.get("summary", "")
+        self._description = data.get("description", "") or ""
+        self._comments = [c["text"] for c in data.get("comments", []) if c.get("text")]
+        self._custom_fields = {
+            f["name"]: f["value"] for f in data.get("customFields", []) if f.get("name")
+        }
+        return self
+
+    def build(self) -> ContextItem:
+        """Calcula raw_content y content_hash automáticamente."""
+        parts = [self._title, self._description] + self._comments
+        raw = "\n".join(filter(None, parts))
+        content_hash = hashlib.sha256(raw.encode()).hexdigest()
+        return ContextItem(
+            item_id=self._item_id,
+            provider_name=self._provider_name,
+            title=self._title,
+            description=self._description,
+            comments=self._comments,
+            custom_fields=self._custom_fields,
+            raw_content=raw,
+            content_hash=content_hash,
+        )
+```
+
+```python
+# src/infrastructure/builders/cache_entry.py
+from ...domain.entities import CacheEntry, ContextItem
+
+class CacheEntryBuilder:
+    def __init__(self):
+        self._item_id: str = ""
+        self._provider_name: str = ""
+        self._content_hash: str = ""
+        self._tool: str = ""
+        self._content: str = ""
+        self._metadata: dict = {}
+
+    def for_item(self, item: ContextItem) -> "CacheEntryBuilder":
+        self._item_id = item.item_id
+        self._provider_name = item.provider_name
+        self._content_hash = item.content_hash
+        return self
+
+    def with_tool(self, tool: str) -> "CacheEntryBuilder":
+        self._tool = tool
+        return self
+
+    def with_content(self, content: str) -> "CacheEntryBuilder":
+        self._content = content
+        return self
+
+    def with_metadata(self, **kwargs) -> "CacheEntryBuilder":
+        self._metadata.update(kwargs)
+        return self
+
+    def build(self) -> CacheEntry:
+        return CacheEntry(
+            item_id=self._item_id,
+            provider_name=self._provider_name,
+            content_hash=self._content_hash,
+            tool=self._tool,
+            content=self._content,
+            metadata=self._metadata,
+            from_cache=False,
+        )
+```
+
+---
+
+## Infrastructure Layer: YouTrackProvider
+
+```python
+# src/infrastructure/providers/task/youtrack.py
+import requests
+from ....domain.interfaces import ProviderInterface
+from ....domain.entities import ContextItem, ProviderConfig
+from ....domain.exceptions import AuthenticationError, ItemNotFoundError, ProviderServerError
+from ...builders.context_item import ContextItemBuilder
+
+class YouTrackProvider(ProviderInterface):
+    def __init__(self, config: ProviderConfig):
+        self._config = config
+
+    def get_item(self, item_id: str, config: ProviderConfig) -> ContextItem:
+        url = f"{config.base_url}/api/issues/{item_id}"
+        headers = {"Authorization": f"Bearer {config.token}"}
+        response = requests.get(url, headers=headers, params={
+            "fields": "id,summary,description,comments(text),customFields(name,value)"
+        })
+        if response.status_code in (401, 403):
+            raise AuthenticationError("Token de autenticación inválido o expirado")
+        if response.status_code == 404:
+            raise ItemNotFoundError(f"Ítem '{item_id}' no encontrado en YouTrack")
+        if response.status_code >= 500:
+            raise ProviderServerError(f"Error del servidor YouTrack: HTTP {response.status_code}")
+        response.raise_for_status()
+        return (
+            ContextItemBuilder()
+            .set_item_id(item_id)
+            .set_provider_name("youtrack")
+            .from_youtrack_response(response.json())
+            .build()
+        )
+
+    def validate_config(self, config: ProviderConfig) -> bool:
+        return bool(config.base_url and config.token)
+```
+
+---
+
+## Infrastructure Layer: ChromaCacheRepository
+
+```python
+# src/infrastructure/cache/chroma.py
+import chromadb
+from ...domain.interfaces import CacheRepositoryInterface
+from ...domain.entities import CacheEntry
+
+class ChromaCacheRepository(CacheRepositoryInterface):
+    def __init__(self, host: str, port: int):
+        self._client = chromadb.HttpClient(host=host, port=port)
+        self._collection = self._client.get_or_create_collection("contextforge_cache")
+
+    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None:
+        where = {
+            "item_id": item_id,
+            "provider_name": provider_name,
+            "content_hash": content_hash,
+            "tool": tool,
+        }
+        if "max_tokens" in kwargs:
+            where["max_tokens"] = kwargs["max_tokens"]
+        results = self._collection.get(where=where, include=["documents", "metadatas"])
+        if not results["documents"]:
+            return None
+        return CacheEntry(
+            item_id=item_id,
+            provider_name=provider_name,
+            content_hash=content_hash,
+            tool=tool,
+            content=results["documents"][0],
+            metadata=results["metadatas"][0],
+            from_cache=True,
+        )
+
+    def store(self, entry: CacheEntry) -> None:
+        doc_id = _build_doc_id(entry)
+        self._collection.upsert(
+            ids=[doc_id],
+            documents=[entry.content],
+            metadatas=[{
+                **entry.metadata,
+                "item_id": entry.item_id,
+                "provider_name": entry.provider_name,
+                "content_hash": entry.content_hash,
+                "tool": entry.tool,
+            }],
+        )
+
+    def invalidate(self, item_id: str, provider_name: str, tool: str) -> None:
+        self._collection.delete(
+            where={"item_id": item_id, "provider_name": provider_name, "tool": tool}
+        )
+
+def _build_doc_id(entry: CacheEntry) -> str:
+    base = f"{entry.item_id}::{entry.provider_name}::{entry.content_hash}::{entry.tool}"
+    if entry.tool == "read_summarize" and "max_tokens" in entry.metadata:
+        return f"{base}::{entry.metadata['max_tokens']}"
+    if entry.tool == "read_chunks" and "chunk_index" in entry.metadata:
+        return f"{base}::{entry.metadata['chunk_index']}"
+    return base
+```
+
+---
+
+## Infrastructure Layer: Prompts LangChain
+
+Los prompts se definen como constantes reutilizables usando `ChatPromptTemplate.from_messages()` con roles explícitos `system`/`human` (patrón LCEL moderno). Esto garantiza separación de responsabilidades, validación de variables en tiempo de construcción y compatibilidad con cualquier modelo de chat.
+
+```python
+# src/infrastructure/llm/prompts.py
+from langchain_core.prompts import ChatPromptTemplate
+
+# Prompt para read_summarize: rol system fija el comportamiento, rol human aporta el contenido dinámico
+SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        (
+            "Eres un asistente técnico experto en resumir ítems de gestión de proyectos. "
+            "Tu tarea es extraer los puntos más importantes del ítem proporcionado. "
+            "El resumen debe ser conciso, preciso y no superar {max_tokens} tokens. "
+            "Responde únicamente con el resumen, sin encabezados ni explicaciones adicionales."
+        ),
+    ),
+    (
+        "human",
+        "Resume el siguiente ítem:\n\n{content}",
+    ),
+])
+```
+
+---
+
+## Infrastructure Layer: GeminiLLMEngine
+
+Usa **LCEL** (LangChain Expression Language) con el operador pipe `|` para componer la chain: `prompt | llm | StrOutputParser()`. El `ChatPromptTemplate` con roles `system`/`human` es el patrón recomendado para producción. `get_num_tokens()` usa el tokenizador nativo del modelo vía `langchain_google_genai`.
+
+```python
+# src/infrastructure/llm/gemini.py
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_core.output_parsers import StrOutputParser
+from ...domain.interfaces import LLMEngineInterface
+from ...domain.entities import LLMConfig
+from ...domain.exceptions import LLMError
+from .prompts import SUMMARIZE_PROMPT
+
+class GeminiLLMEngine(LLMEngineInterface):
+    def __init__(self, config: LLMConfig):
+        self._llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            google_api_key=config.api_key,
+        )
+        self._embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004",
+            google_api_key=config.api_key,
+        )
+        # Chain LCEL: ChatPromptTemplate | LLM | StrOutputParser
+        # StrOutputParser extrae el string del AIMessage automáticamente
+        self._summarize_chain = SUMMARIZE_PROMPT | self._llm | StrOutputParser()
+
+    def summarize(self, content: str, max_tokens: int) -> str:
+        """Genera resumen usando LCEL chain. El prompt usa roles system/human explícitos."""
+        try:
+            return self._summarize_chain.invoke({
+                "content": content,
+                "max_tokens": max_tokens,
+            })
+        except Exception as e:
+            raise LLMError(f"Error al generar resumen con Gemini: {e}") from e
+
+    def count_tokens(self, text: str) -> int:
+        """Cuenta tokens usando el tokenizador nativo del modelo."""
+        return self._llm.get_num_tokens(text)
+
+    def get_embeddings(self, text: str) -> list[float]:
+        """Genera embeddings para almacenamiento en ChromaDB."""
+        return self._embeddings.embed_query(text)
+```
+
+---
+
+## Interface Layer: SessionManager
+
+```python
+# app/session.py
+from src.domain.entities import SessionConfig, ProviderConfig
+from src.domain.exceptions import SessionConfigError
+
+class SessionManager:
+    """Almacena SessionConfig por session_id en memoria."""
+
+    def __init__(self):
+        self._sessions: dict[str, SessionConfig] = {}
+
+    def store(self, session_id: str, config: SessionConfig) -> None:
+        self._validate(config)
+        self._sessions[session_id] = config
+
+    def get(self, session_id: str) -> SessionConfig:
+        if session_id not in self._sessions:
+            raise SessionConfigError(f"Sesión '{session_id}' no encontrada o no inicializada")
+        return self._sessions[session_id]
+
+    def delete(self, session_id: str) -> None:
+        self._sessions.pop(session_id, None)
+
+    def _validate(self, config: SessionConfig) -> None:
+        if not config.providers:
+            raise SessionConfigError("Se requiere al menos un proveedor en SessionConfig")
+        for name, provider_config in config.providers.items():
+            if not provider_config.token:
+                raise SessionConfigError(
+                    f"El proveedor '{name}' tiene el campo 'token' vacío o ausente"
+                )
+```
+
+---
+
+## settings.py
+
+```python
+# settings.py
+import sys
+import logging
+from pydantic_settings import BaseSettings
+from src.domain.entities import LLMConfig
+
+logger = logging.getLogger(__name__)
+
+class Settings(BaseSettings):
+    LLM_ENGINE: str = "gemini"
+    LLM_API_KEY: str = ""
+    CHROMA_HOST: str = "chromadb"
+    CHROMA_PORT: int = 8000
+    MCP_PORT: int = 8999
+    LOG_LEVEL: str = "INFO"
+
+    def get_llm_config(self) -> LLMConfig:
+        return LLMConfig(engine_type=self.LLM_ENGINE, api_key=self.LLM_API_KEY)
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
+# Validación al iniciar
+if not settings.LLM_API_KEY:
+    logger.error("LLM_API_KEY no está definida. El servidor no puede iniciar.")
+    sys.exit(1)
+```
+
+| Variable | Requerida | Default | Descripción |
+|----------|-----------|---------|-------------|
+| `LLM_ENGINE` | No | `gemini` | Tipo de motor LLM ("gemini", "openai") |
+| `LLM_API_KEY` | Sí | — | API key del motor LLM activo |
+| `CHROMA_HOST` | No | `chromadb` | Host de ChromaDB |
+| `CHROMA_PORT` | No | `8000` | Puerto de ChromaDB |
+| `MCP_PORT` | No | `8999` | Puerto del servidor FastAPI |
+| `LOG_LEVEL` | No | `INFO` | Nivel de logging |
+
+---
+
+## Flujos con Diagramas de Secuencia
+
+### 1. Inicialización de Sesión MCP
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent (Cursor)
+    participant FastAPI as Interface Layer (FastAPI)
+    participant SM as SessionManager
+    participant Domain as Domain (SessionConfig)
+
+    Agent->>FastAPI: POST /mcp { method: "initialize", params: { clientInfo: { config: { providers: {...} } } } }
+    FastAPI->>FastAPI: Validar header Origin (DNS rebinding protection)
+    FastAPI->>Domain: Construir SessionConfig desde params.clientInfo.config
+    alt SessionConfig inválida (providers vacío o token faltante)
+        Domain-->>FastAPI: SessionConfigError
+        FastAPI-->>Agent: { error: { code: -32600, message: "..." } }
+    else SessionConfig válida
+        FastAPI->>SM: store(session_id, SessionConfig)
+        SM-->>FastAPI: OK
+        FastAPI-->>Agent: { result: { protocolVersion, capabilities, serverInfo } }
+    end
+```
+
+### 2. Flujo General de Herramienta con Caché
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent
+    participant CTRL as Controller (FastAPI)
+    participant SVC as ContextService (Facade)
+    participant UC as UseCase
+    participant Provider as ProviderInterface
+    participant Cache as CacheRepositoryInterface
+    participant LLM as LLMEngineInterface
+    participant DB as ChromaDB
+
+    Agent->>CTRL: POST /mcp { method: "tools/call", params: { name, arguments } }
+    CTRL->>SVC: read_*(item_id, provider_name, session, params)
+    SVC->>UC: execute(item_id, provider_name, params)
+    UC->>Provider: get_item(item_id, config)
+    Provider-->>UC: ContextItem(raw_content, content_hash, ...)
+    UC->>Cache: lookup(item_id, provider_name, content_hash, tool, params)
+    Cache->>DB: query by metadata
+    alt Cache HIT
+        DB-->>Cache: documento + metadatos
+        Cache-->>UC: CacheEntry (from_cache=True)
+    else Cache MISS
+        UC->>LLM: process(raw_content, params)
+        LLM-->>UC: resultado procesado
+        UC->>Cache: store(CacheEntry)
+        Cache->>DB: upsert documento + embeddings
+        UC-->>SVC: CacheEntry (from_cache=False)
+    end
+    SVC-->>CTRL: resultado
+    CTRL-->>Agent: { content, from_cache }
+```
+
+### 3. Flujo Específico: read_full
+
+```mermaid
+flowchart TD
+    A[POST /mcp tools/call read_full] --> B[ContextService.read_full]
+    B --> C[Validar provider_name en SessionConfig]
+    C --> D[ProviderFactory.create provider_name]
+    D --> E[Provider.get_item item_id]
+    E --> F[ContextItemBuilder.build → content_hash SHA-256]
+    F --> G{Cache HIT?\nitem_id + provider_name + hash + read_full}
+    G -->|Sí| H[Retornar CacheEntry - from_cache=True]
+    G -->|No| I[CacheEntryBuilder.build]
+    I --> J[ChromaCacheRepository.store]
+    J --> K[Retornar CacheEntry - from_cache=False]
+```
+
+### 4. Flujo Específico: read_summarize
+
+```mermaid
+flowchart TD
+    A[POST /mcp tools/call read_summarize] --> B[ContextService.read_summarize]
+    B --> C[Validar max_tokens 1-10000]
+    C --> D[Validar provider_name en SessionConfig]
+    D --> E[ProviderFactory.create provider_name]
+    E --> F[Provider.get_item item_id]
+    F --> G[ContextItemBuilder.build → content_hash SHA-256]
+    G --> H{Cache HIT?\nitem_id + provider_name + hash + read_summarize + max_tokens}
+    H -->|Sí| I[Retornar CacheEntry - from_cache=True]
+    H -->|No| J[LLMEngine.summarize raw_content max_tokens]
+    J --> K[CacheEntryBuilder.build]
+    K --> L[ChromaCacheRepository.store]
+    L --> M[Retornar CacheEntry - from_cache=False]
+```
+
+### 5. Flujo Específico: read_chunks
+
+```mermaid
+flowchart TD
+    A[POST /mcp tools/call read_chunks] --> B[ContextService.read_chunks]
+    B --> C[Validar provider_name en SessionConfig]
+    C --> D[ProviderFactory.create provider_name]
+    D --> E[Provider.get_item item_id]
+    E --> F[ContextItemBuilder.build → content_hash SHA-256]
+    F --> G{Cache HIT?\nitem_id + provider_name + hash + read_chunks}
+    G -->|No| H[Dividir raw_content en chunks max 500 tokens]
+    H --> I[Almacenar cada chunk en ChromaDB]
+    I --> J[Filtrar por chunk_indices]
+    G -->|Sí| J
+    J --> K{Índices especificados?}
+    K -->|No| L[Retornar todos los chunks]
+    K -->|Sí| M[Validar índices contra total_chunks]
+    M --> N[Retornar chunks solicitados + total_chunks]
+```
+
+**Algoritmo de fragmentación**: Se divide el texto respetando límites de oraciones usando regex `(?<=[.!?])\s+`. Se usa `LLMEngine.count_tokens` para medir cada fragmento. Si agregar la siguiente oración supera 500 tokens, se cierra el chunk actual y se inicia uno nuevo.
+
+---
+
+## Modelos de Datos: ChromaDB
+
+### Colección: `contextforge_cache`
+
+Se usa una única colección con filtrado por metadatos.
+
+#### Esquema de Metadatos
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `item_id` | string | ID del ítem en el proveedor |
+| `provider_name` | string | Nombre del proveedor (ej. "youtrack") |
+| `content_hash` | string | SHA-256 del `raw_content` |
+| `tool` | string | `"read_full"` / `"read_summarize"` / `"read_chunks"` |
+| `max_tokens` | int / null | Solo para `tool="read_summarize"` |
+| `chunk_index` | int / null | Solo para `tool="read_chunks"` |
+| `total_chunks` | int / null | Solo para `tool="read_chunks"` |
+| `timestamp` | string | ISO 8601 |
+
+#### IDs de Documento en ChromaDB
+
+- `read_full`: `{item_id}::{provider_name}::{content_hash}::read_full`
+- `read_summarize`: `{item_id}::{provider_name}::{content_hash}::read_summarize::{max_tokens}`
+- `read_chunks`: `{item_id}::{provider_name}::{content_hash}::read_chunks::{chunk_index}`
+
+---
+
+## Configuración Docker
+
+### Dockerfile
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8999"]
+```
+
+### docker-compose.yml
+
+```yaml
+version: "3.9"
+
+services:
+  contextforge:
+    build: .
+    ports:
+      - "${MCP_PORT:-8999}:8999"
+    environment:
+      - LLM_ENGINE=${LLM_ENGINE:-gemini}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000        # puerto interno del contenedor ChromaDB (red Docker)
+    depends_on:
+      - chromadb
+    networks:
+      - contextforge-net
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "9000:8000"             # 9000 expuesto al host, 8000 interno (red Docker)
+    volumes:
+      - chroma-data:/chroma/.chroma   # ruta correcta según imagen oficial
+    networks:
+      - contextforge-net
+
+volumes:
+  chroma-data:
+
+networks:
+  contextforge-net:
+```
+
+### .env.example
+
+```env
+LLM_ENGINE=gemini
+LLM_API_KEY=your_api_key_here
+CHROMA_HOST=chromadb
+CHROMA_PORT=8000
+MCP_PORT=8999
+LOG_LEVEL=INFO
+```
+
+### Configuración MCP para Cursor
+
+Archivo `.cursor/mcp.json` en el proyecto (o `~/.cursor/mcp.json` global):
+
+```json
+{
+  "mcpServers": {
+    "ContextForge": {
+      "url": "http://localhost:8999/mcp",
+      "config": {
+        "providers": {
+          "youtrack": { "base_url": "https://company.youtrack.cloud", "token": "perm_xxx" },
+          "github":   { "token": "ghp_xxx" }
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+## Manejo de Errores
+
+### Estrategia de Errores
+
+- Todos los errores de dominio se capturan en el controller MCP y se retornan como `JSONResponse` con solo `message`.
+- Si ChromaDB no está disponible al iniciar, el servidor falla con código de salida 1.
+- Si `LLM_API_KEY` no está configurada, el servidor falla al iniciar con código de salida 1.
+- Si `LLM_ENGINE` no tiene implementación registrada en `LLMFactory`, el servidor falla al iniciar con código de salida 1, listando los motores disponibles.
+- Los errores de proveedor (4xx, 5xx) se propagan como `ContextForgeError` y se convierten en errores MCP descriptivos.
+- `SessionConfigError` se retorna como error de inicialización MCP con mensaje que identifica el campo faltante o inválido.
+
+### Jerarquía de Excepciones
+
+```
+ContextForgeError
+├── ConfigurationError          # Variables de entorno faltantes o inválidas
+├── SessionConfigError          # SessionConfig inválida o sesión no encontrada
+├── AuthenticationError         # 401/403 del proveedor
+├── ItemNotFoundError           # 404 del proveedor
+├── ProviderServerError         # 5xx del proveedor
+├── CacheError                  # ChromaDB no disponible
+├── LLMError                    # Error del motor LLM (cuota, timeout, etc.)
+├── ValidationError             # Parámetros inválidos (max_tokens, chunk_index)
+├── ProviderNotRegisteredError  # Tipo de proveedor no registrado en ProviderFactory
+└── LLMEngineNotRegisteredError # Tipo de motor no registrado en LLMFactory
+```
+
+---
+
+## Propiedades de Corrección
+
+*Una propiedad es una característica o comportamiento que debe mantenerse verdadero en todas las ejecuciones válidas del sistema.*
+
+### Propiedad 1: Validación de campos faltantes en ProviderConfig
+Para cualquier invocación donde la `ProviderConfig` omite el `token`, el servidor retorna un error que identifica específicamente qué campo falta y en qué proveedor. **Valida: Requisito 1.4**
+
+### Propiedad 2: Rechazo de URL con formato inválido
+Para cualquier string que no sea una URL HTTP/HTTPS válida como `base_url`, el servidor retorna un error descriptivo indicando el proveedor afectado. **Valida: Requisito 1.5**
+
+### Propiedad 3: Round-trip de caché por herramienta
+Para cualquier combinación de `item_id`, `provider_name`, `content_hash`, `tool` y parámetros adicionales, si se almacena un resultado en caché y luego se realiza una segunda invocación con los mismos parámetros, el servidor retorna el mismo contenido con `from_cache=True` sin consultar al proveedor ni al LLM. **Valida: Requisitos 3.4, 4.6, 5.6, 6.3**
+
+### Propiedad 4: Resumen respeta el límite de tokens
+Para cualquier contenido y cualquier `max_tokens` entre 1 y 10000, el resumen generado tiene un número de tokens ≤ al límite especificado. **Valida: Requisito 4.3**
+
+### Propiedad 5: Rechazo de max_tokens fuera de rango
+Para cualquier `max_tokens` < 1 o > 10000, el servidor retorna un error de validación indicando que el valor debe estar entre 1 y 10000. **Valida: Requisito 4.7**
+
+### Propiedad 6: Chunks no exceden el límite de tokens
+Para cualquier contenido, todos los chunks generados por `read_chunks` tienen un número de tokens ≤ 500. **Valida: Requisito 5.2**
+
+### Propiedad 7: Los chunks cubren el contenido completo
+Para cualquier contenido, la concatenación de todos los chunks generados es equivalente al contenido original sin pérdida de información. **Valida: Requisito 5.2**
+
+### Propiedad 8: Selección de chunks específicos retorna solo los solicitados
+Para cualquier ítem y cualquier subconjunto válido de `chunk_indices`, `read_chunks` retorna exactamente los chunks correspondientes a esos índices junto con el `total_chunks` correcto. **Valida: Requisitos 5.4, 12.5**
+
+### Propiedad 9: Índice de chunk inválido retorna error con rango válido
+Para cualquier `chunk_index` fuera del rango [1, total_chunks], el servidor retorna un error que menciona los índices válidos disponibles. **Valida: Requisito 5.7**
+
+### Propiedad 10: Coherencia semántica en fragmentación
+Para cualquier contenido, ningún chunk termina en medio de una oración (el último carácter de cada chunk que no sea el último es un delimitador de oración: `.`, `!`, `?`). **Valida: Requisito 5.9**
+
+### Propiedad 11: Invalidación de caché cuando cambia el contenido
+Para cualquier ítem cuyo `content_hash` cambia entre dos invocaciones consecutivas, la segunda invocación ejecuta el flujo completo y almacena el nuevo resultado sin retornar el resultado cacheado anterior. **Valida: Requisito 6.5**
+
+### Propiedad 12: max_tokens diferente produce cache miss
+Para cualquier ítem con el mismo `item_id`, `provider_name` y `content_hash`, dos invocaciones de `read_summarize` con `max_tokens` distintos producen entradas de caché independientes. **Valida: Requisito 6.2**
+
+### Propiedad 13: Header de autenticación en todas las solicitudes al proveedor
+Para cualquier solicitud realizada por `YouTrackProvider`, el header `Authorization: Bearer {token}` está presente con el token de la `ProviderConfig` activa. **Valida: Requisito 9.2**
+
+### Propiedad 14: Extracción completa de campos de YouTrack
+Para cualquier respuesta exitosa de YouTrack, el `ContextItem` resultante contiene título, descripción, comentarios y campos personalizados sin pérdida de información. **Valida: Requisito 9.3**
+
+### Propiedad 15: Fallo al iniciar con variables de entorno requeridas faltantes
+Para cualquier variable de entorno requerida (`LLM_API_KEY`) no definida al iniciar, el proceso termina con código de salida ≠ 0 y registra un mensaje de error que identifica la variable faltante. **Valida: Requisito 2.4**
+
+### Propiedad 16: ProviderFactory instancia el proveedor correcto según nombre e infiere su categoría
+Para cualquier nombre de proveedor registrado, `ProviderFactory.create(provider_name, config)` retorna una instancia que implementa `ProviderInterface` y `ProviderFactory.get_category(provider_name)` retorna la categoría correcta (`"task"`, `"git"`, `"file"`). Para cualquier nombre no registrado, ambos métodos lanzan `ProviderNotRegisteredError` con un mensaje que lista los nombres disponibles. **Valida: Requisito 7.3**
+
+### Propiedad 17: Respuesta contiene solo el contexto solicitado
+Para cualquier invocación de herramienta, la respuesta contiene únicamente los campos especificados en el contrato de la herramienta, sin datos internos ni metadatos de implementación. **Valida: Requisito 12.3**
+
+### Propiedad 18: LLMFactory instancia el motor correcto según LLM_ENGINE
+Para cualquier tipo de motor LLM registrado, `LLMFactory.create(engine_type, config)` retorna una instancia que implementa `LLMEngineInterface`. Para cualquier tipo no registrado, lanza `LLMEngineNotRegisteredError` con un mensaje que lista los motores disponibles. **Valida: Requisito 8.3**
+
+### Propiedad 19: SessionConfig inválida produce error de inicialización MCP descriptivo
+Para cualquier mensaje `initialize` donde `providers` está vacío o algún proveedor tiene `token` vacío, el servidor retorna un error con `message` que identifica específicamente el problema. **Valida: Requisitos 1.4, 1.5**
+
+### Propiedad 20: ContextItemBuilder produce content_hash SHA-256 consistente
+Para cualquier conjunto de datos de entrada, `ContextItemBuilder.build()` produce siempre el mismo `content_hash` SHA-256 para el mismo `raw_content`, y `content_hash` distinto para `raw_content` distinto. **Valida: Requisito 6.1**
+
+---
+
+## Estrategia de Testing
+
+### Enfoque Dual
+
+- **Tests unitarios**: Verifican ejemplos específicos, casos borde y condiciones de error con mocks.
+- **Tests de propiedades**: Verifican invariantes universales sobre rangos amplios de entradas con `hypothesis` (`@settings(max_examples=100)`).
+
+Cada property test incluye comentario: `# Feature: contextforge, Propiedad N: <texto>`
+
+### Mapeo de Propiedades a Tests
+
+| Propiedad | Archivo | Descripción |
+|-----------|---------|-------------|
+| P1, P2, P5, P15, P17, P19 | `test_properties_validation.py` | Validaciones de entrada y configuración |
+| P3, P11, P12 | `test_properties_cache.py` | Comportamiento de caché |
+| P6, P7, P8, P9, P10 | `test_properties_chunks.py` | Fragmentación de contenido |
+| P13, P14, P16, P18, P20 | `test_properties_providers.py` | Proveedores, factories y builders |
+| P4 | `test_properties_validation.py` | Límite de tokens en resumen |
+
+### Ejemplo de Test de Propiedad
+
+```python
+# tests/property/test_properties_providers.py
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from src.infrastructure.providers.factory import ProviderFactory
+from src.domain.entities import ProviderConfig
+from src.domain.exceptions import ProviderNotRegisteredError
+
+# Feature: contextforge, Propiedad 16: ProviderFactory instancia el proveedor correcto según tipo
+@settings(max_examples=100)
+@given(provider_type=st.text(min_size=1).filter(lambda s: s not in ProviderFactory._registry))
+def test_provider_factory_raises_for_unregistered_type(provider_type: str):
+    config = ProviderConfig(token="test-token", base_url="https://example.com")
+    try:
+        ProviderFactory.create(provider_type, config)
+        assert False, "Debería haber lanzado ProviderNotRegisteredError"
+    except ProviderNotRegisteredError as e:
+        assert provider_type in str(e) or "Disponibles" in str(e)
+```
+
+```python
+# tests/property/test_properties_providers.py
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from src.infrastructure.builders.context_item import ContextItemBuilder
+
+# Feature: contextforge, Propiedad 20: ContextItemBuilder produce content_hash SHA-256 consistente
+@settings(max_examples=100)
+@given(
+    title=st.text(),
+    description=st.text(),
+    comments=st.lists(st.text()),
+)
+def test_context_item_builder_consistent_hash(title: str, description: str, comments: list[str]):
+    data = {"summary": title, "description": description, "comments": [{"text": c} for c in comments]}
+    item1 = ContextItemBuilder().set_item_id("X-1").set_provider_name("youtrack").from_youtrack_response(data).build()
+    item2 = ContextItemBuilder().set_item_id("X-1").set_provider_name("youtrack").from_youtrack_response(data).build()
+    assert item1.content_hash == item2.content_hash
+    assert item1.raw_content == item2.raw_content
+```
