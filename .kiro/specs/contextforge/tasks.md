@@ -1,5 +1,7 @@
 # Plan de Implementación: ContextForge
 
+> **Nota:** Consultar el Issue #2 que contiene la documentación de Design y Requirements antes de crear las tareas de implementación.
+
 ## Visión General
 
 Implementación incremental de ContextForge siguiendo Clean Architecture: primero el dominio, luego infraestructura, después la capa de aplicación y finalmente la interfaz HTTP/MCP. Cada tarea construye sobre la anterior y termina con la integración completa.
