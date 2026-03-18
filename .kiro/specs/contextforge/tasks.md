@@ -66,9 +66,11 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - `select = ["E", "F", "I"]` (errores, pyflakes, imports)
     - `exclude = [".venv", "__pycache__"]`
   - Crear `Makefile` en la raíz con los siguientes targets:
-    - `make lint` → ejecuta `ruff check .`
-    - `make format` → ejecuta `ruff format .`
-    - `make typecheck` → ejecuta `mypy src/ app/`
+    - `make lint` → ejecuta `ruff check .` (muestra todos los problemas encontrados, no modifica nada)
+    - `make fix` → ejecuta `ruff check --fix .` (corrige automáticamente lo que puede: imports sin usar, comillas, espacios, etc. Lo que no puede corregir solo lo reporta para revisión manual)
+    - `make lint-file FILE=ruta/archivo.py` → ejecuta `ruff check $(FILE)` (lint sobre un archivo o directorio específico, útil para revisar solo lo que estás tocando)
+    - `make format` → ejecuta `ruff format .` (formatea el estilo del código: indentación, saltos de línea, etc.)
+    - `make typecheck` → ejecuta `mypy src/ app/` (verifica tipos estáticos, estos errores siempre son manuales ya que mypy no autocorrige)
     - `make test` → ejecuta `pytest tests/ -v`
     - `make check` → ejecuta `lint` + `typecheck` + `test` en secuencia (útil antes de hacer commit)
     - `make up` → ejecuta `docker-compose up --build`
