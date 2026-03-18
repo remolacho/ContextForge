@@ -124,8 +124,8 @@ graph LR
 
 ### 3. Builder (x2)
 
-- **`ContextItemBuilder`**: construye el objeto `ContextItem` desde la respuesta raw del proveedor (ej. YouTrack JSON → `ContextItem` con `raw_content` + `content_hash`).
-- **`CacheEntryBuilder`**: construye `CacheEntry` con todos sus metadatos de forma fluida.
+- **`ContextItemBuilder`**: construye el objeto `ContextItem` desde campos genéricos (no desde JSON específico de proveedor). Cada proveedor es responsable de transformar su respuesta JSON a campos genéricos antes de pasarlos al builder. Esto permite que el builder sea agnóstico al proveedor y cumpla con el principio Open/Closed.
+- **`CacheEntryBuilder`**: construye `CacheEntry` con todos sus metadatos de forma fluida. Este builder NO se ve afectado por el cambio porque recibe un `ContextItem` ya parseado.
 
 ### 4. Strategy (implícito en Factory)
 
@@ -931,6 +931,8 @@ class ReadChunksUseCase:
 
 ## Infrastructure Layer: Builders
 
+> **Nota importante:** El `ContextItemBuilder` debe ser **genérico y agnóstico al proveedor**. Cada proveedor (YouTrack, Jira, GitHub, etc.) es responsable de transformar su respuesta JSON específica a campos genéricos (`title`, `description`, `comments`, `custom_fields`) antes de pasarlos al builder. Esto cumple con el principio Open/Closed: agregar un nuevo proveedor no requiere modificar el builder.
+
 ```python
 # src/infrastructure/builders/context_item.py
 import hashlib
@@ -953,13 +955,20 @@ class ContextItemBuilder:
         self._provider_name = name
         return self
 
-    def from_youtrack_response(self, data: dict) -> "ContextItemBuilder":
-        self._title = data.get("summary", "")
-        self._description = data.get("description", "") or ""
-        self._comments = [c["text"] for c in data.get("comments", []) if c.get("text")]
-        self._custom_fields = {
-            f["name"]: f["value"] for f in data.get("customFields", []) if f.get("name")
-        }
+    def set_title(self, title: str) -> "ContextItemBuilder":
+        self._title = title
+        return self
+
+    def set_description(self, description: str) -> "ContextItemBuilder":
+        self._description = description
+        return self
+
+    def set_comments(self, comments: list[str]) -> "ContextItemBuilder":
+        self._comments = comments
+        return self
+
+    def set_custom_fields(self, custom_fields: dict) -> "ContextItemBuilder":
+        self._custom_fields = custom_fields
         return self
 
     def build(self) -> ContextItem:
@@ -977,6 +986,22 @@ class ContextItemBuilder:
             raw_content=raw,
             content_hash=content_hash,
         )
+```
+
+**Ejemplo de uso en YouTrackProvider:**
+```python
+# YouTrackProvider transforma su JSON específico a campos genéricos
+data = response.json()
+return (
+    ContextItemBuilder()
+    .set_item_id(item_id)
+    .set_provider_name("youtrack")
+    .set_title(data.get("summary", ""))
+    .set_description(data.get("description", ""))
+    .set_comments([c["text"] for c in data.get("comments", [])])
+    .set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})
+    .build()
+)
 ```
 
 ```python
@@ -1026,6 +1051,8 @@ class CacheEntryBuilder:
 
 ## Infrastructure Layer: YouTrackProvider
 
+> **Nota:** YouTrackProvider transforma su respuesta JSON específica a campos genéricos antes de pasarlos al `ContextItemBuilder`. Esto permite que el builder sea reutilizable por cualquier proveedor.
+
 ```python
 # src/infrastructure/providers/task/youtrack.py
 import requests
@@ -1051,11 +1078,17 @@ class YouTrackProvider(ProviderInterface):
         if response.status_code >= 500:
             raise ProviderServerError(f"Error del servidor YouTrack: HTTP {response.status_code}")
         response.raise_for_status()
+
+        # Transformar JSON específico de YouTrack a campos genéricos
+        data = response.json()
         return (
             ContextItemBuilder()
             .set_item_id(item_id)
             .set_provider_name("youtrack")
-            .from_youtrack_response(response.json())
+            .set_title(data.get("summary", ""))
+            .set_description(data.get("description", ""))
+            .set_comments([c["text"] for c in data.get("comments", [])])
+            .set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})
             .build()
         )
 

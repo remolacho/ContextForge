@@ -80,15 +80,19 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
   > Los builders construyen objetos complejos paso a paso usando una API fluida (encadenamiento de métodos). Evitan constructores con muchos parámetros y centralizan la lógica de construcción (ej. calcular el hash SHA-256 siempre en el mismo lugar).
 
   - [ ] 4.1 Implementar `ContextItemBuilder`
-    > Este builder toma la respuesta JSON cruda de YouTrack y la convierte en un `ContextItem` limpio. Centraliza el cálculo del `content_hash` para que siempre sea consistente.
+    > Este builder debe ser **genérico y agnóstico al proveedor**. Cada proveedor es responsable de transformar su respuesta JSON específica a campos genéricos antes de pasarlos al builder. Esto cumple con el principio Open/Closed: agregar un nuevo proveedor (Jira, GitHub, etc.) no requiere modificar el builder.
     - Crear `src/infrastructure/builders/context_item.py` con métodos fluidos:
       - `set_item_id(item_id)`: guarda el ID del ítem
       - `set_provider_name(name)`: guarda el nombre del proveedor
-      - `from_youtrack_response(data: dict)`: extrae `summary`, `description`, `comments` y `customFields` del JSON de YouTrack
+      - `set_title(title)`: guarda el título
+      - `set_description(description)`: guarda la descripción
+      - `set_comments(comments: list[str])`: guarda la lista de comentarios
+      - `set_custom_fields(custom_fields: dict)`: guarda campos personalizados
       - `build()`: concatena título + descripción + comentarios en `raw_content`, calcula `content_hash` como SHA-256 de `raw_content` y retorna el `ContextItem`
+    - **NO** debe tener métodos como `from_youtrack_response()` - eso violaría el principio Open/Closed
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§3), Req. 6 — Caché (§1)_
 
-  - [ ]* 4.2 Escribir property test para ContextItemBuilder
+  - [ ] 4.2 Escribir property test para ContextItemBuilder
     > Verifica que el hash SHA-256 siempre es el mismo para el mismo contenido (determinismo) y diferente para contenido diferente.
     - Archivo: `tests/property/test_properties_providers.py`
     - **Propiedad 20:** Para cualquier combinación de título, descripción y comentarios, `build()` siempre produce el mismo `content_hash` (SHA-256 determinista). Si cambia cualquier campo, el hash cambia.
@@ -146,12 +150,19 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
   > Los proveedores son los adaptadores que saben cómo hablar con sistemas externos (YouTrack, Jira, etc.). Implementan `ProviderInterface` para que el resto del sistema no sepa ni le importe con qué API externa se está comunicando.
 
   - [ ] 6.1 Implementar `YouTrackProvider`
-    > El único proveedor funcional del MVP. Hace una llamada HTTP a la API de YouTrack, maneja los errores de autenticación y construye el `ContextItem` usando el builder.
+    > El único proveedor funcional del MVP. Hace una llamada HTTP a la API de YouTrack, maneja los errores de autenticación y construye el `ContextItem` usando el builder. **El proveedor es responsable de transformar su respuesta JSON específica a campos genéricos** antes de pasarlos al builder.
     - Crear `src/infrastructure/providers/task/youtrack.py` implementando `ProviderInterface`:
       - Constructor recibe `config: ProviderConfig` y lo guarda en `self._config`
       - `get_item(item_id, config)`: hace GET a `{config.base_url}/api/issues/{item_id}?fields=id,summary,description,comments(text),customFields(name,value)` con header `Authorization: Bearer {config.token}`
       - Mapeo de errores HTTP: 401/403 → lanzar `AuthenticationError`, 404 → `ItemNotFoundError`, 5xx → `ProviderServerError`
-      - Usar `ContextItemBuilder` para construir el `ContextItem` desde el JSON de respuesta
+      - Usar `ContextItemBuilder` para construir el `ContextItem` transformando el JSON de YouTrack a campos genéricos:
+        - `set_item_id(item_id)`
+        - `set_provider_name("youtrack")`
+        - `set_title(data.get("summary", ""))`
+        - `set_description(data.get("description", ""))`
+        - `set_comments([c["text"] for c in data.get("comments", [])])`
+        - `set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})`
+        - `build()` (calcula SHA-256 automáticamente)
       - `validate_config(config)`: retorna `True` si `token` no está vacío y `base_url` es una URL válida
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§1,2,3,4,5,6)_
 
@@ -164,7 +175,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§2,3)_
 
   - [ ] 6.3 Crear stubs de proveedores futuros
-    > Crear los archivos vacíos ahora establece la estructura para escalar. Un stub implementa la interfaz pero lanza `NotImplementedError`, dejando claro que aún no está implementado.
+    > Crear los archivos vacíos ahora establece la estructura para escalar. Un stub implementa la interfaz pero lanza `NotImplementedError`, dejando claro que aún no está implementado. **Cuando se implementen, deberán transformar su JSON específico a campos genéricos usando ContextItemBuilder** (igual que YouTrackProvider).
     - Crear `src/infrastructure/providers/task/jira.py`: clase `JiraProvider(ProviderInterface)` que lanza `NotImplementedError("JiraProvider no implementado aún")` en todos sus métodos
     - Crear `src/infrastructure/providers/git/github.py`: `GitHubProvider` stub igual
     - Crear `src/infrastructure/providers/git/gitlab.py`: `GitLabProvider` stub igual
