@@ -88,7 +88,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `build()`: concatena título + descripción + comentarios en `raw_content`, calcula `content_hash` como SHA-256 de `raw_content` y retorna el `ContextItem`
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§3), Req. 6 — Caché (§1)_
 
-  - [ ]* 4.2 Escribir property test para ContextItemBuilder
+  - [ ] 4.2 Escribir property test para ContextItemBuilder
     > Verifica que el hash SHA-256 siempre es el mismo para el mismo contenido (determinismo) y diferente para contenido diferente.
     - Archivo: `tests/property/test_properties_providers.py`
     - **Propiedad 20:** Para cualquier combinación de título, descripción y comentarios, `build()` siempre produce el mismo `content_hash` (SHA-256 determinista). Si cambia cualquier campo, el hash cambia.
