@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from .entities import ContextItem, ProviderConfig, CacheEntry, Chunk, LLMConfig
+
+from .entities import CacheEntry, ContextItem, ProviderConfig
 
 
 class ProviderInterface(ABC):
@@ -12,7 +13,9 @@ class ProviderInterface(ABC):
 
 class CacheRepositoryInterface(ABC):
     @abstractmethod
-    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None: ...
+    def lookup(
+        self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs
+    ) -> CacheEntry | None: ...
 
     @abstractmethod
     def store(self, entry: CacheEntry) -> None: ...
