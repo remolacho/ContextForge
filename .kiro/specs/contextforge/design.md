@@ -51,22 +51,20 @@ graph LR
         EX["Domain Exceptions"]
     end
     subgraph "Infrastructure Layer"
-        PF["ProviderFactory (registro por nombre → categoría + clase)"]
+        PF["ProviderFactory"]
         subgraph "providers/task/"
             YT["YouTrackProvider"]
-            JI["JiraProvider (stub)"]
         end
         subgraph "providers/git/ (futuro)"
-            GH["GitHubProvider (stub)"]
-            GL["GitLabProvider (stub)"]
+            GH["GitHubProvider (futuro)"]
+            GL["GitLabProvider (futuro)"]
         end
         subgraph "providers/file/ (futuro)"
-            PDF["PDFProvider (stub)"]
-            MD["MarkdownProvider (stub)"]
+            PDF["PDFProvider (futuro)"]
+            MD["MarkdownProvider (futuro)"]
         end
         CH["ChromaCacheRepository"]
         GE["GeminiLLMEngine"]
-        OA["OpenAILLMEngine (stub)"]
         LF["LLMFactory"]
         CB["ContextItemBuilder"]
         CEB["CacheEntryBuilder"]
@@ -82,20 +80,13 @@ graph LR
     UC2 --> P
     UC3 --> P
     YT --> P
-    JI --> P
     GH --> P
     GL --> P
     PDF --> P
     MD --> P
     CH --> P
     GE --> P
-    OA --> P
-    PF --> YT
-    PF --> JI
-    PF --> GH
-    PF --> GL
     LF --> GE
-    LF --> OA
     CB --> E
     CEB --> E
 ```
@@ -262,8 +253,6 @@ from config.routes import Routes
 from settings import settings
 from src.infrastructure.cache.chroma import ChromaCacheRepository
 from src.infrastructure.llm.factory import LLMFactory
-import src.infrastructure.providers  # activa registro en ProviderFactory
-import src.infrastructure.llm        # activa registro en LLMFactory
 from src.application.services.context_service import ContextService
 from app.session import SessionManager
 from app.exceptions.exception_handler import exception_handlers
@@ -282,7 +271,7 @@ for exc_class, handler in exception_handlers.items():
 
 # Inicializar infraestructura (singleton por proceso)
 cache = ChromaCacheRepository(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
-llm = LLMFactory.create(settings.LLM_ENGINE, settings.get_llm_config())
+llm = LLMFactory(settings.get_llm_config()).create()
 context_service = ContextService(cache=cache, llm=llm)
 session_manager = SessionManager()
 
@@ -487,8 +476,9 @@ from typing import Optional
 
 @dataclass
 class ProviderConfig:
+    code: str                     # "youtrack", "jira" - identifica el proveedor
     token: str
-    base_url: Optional[str] = None   # opcional según proveedor
+    base_url: Optional[str] = None
 
 @dataclass
 class SessionConfig:
@@ -595,115 +585,75 @@ class LLMEngineNotRegisteredError(ContextForgeError): ...
 
 ## Infrastructure Layer: ProviderFactory
 
-El `ProviderFactory` usa un registro de dos niveles: `provider_name → (category, class)`. La categoría se infiere automáticamente por el nombre del proveedor al registrarlo, sin requerir ningún campo extra en el body del cliente. Esto permite escalar añadiendo nuevas categorías (`git`, `file`) o nuevos proveedores dentro de una categoría existente (`jira` en `task`) sin modificar la lógica de los casos de uso.
+El `ProviderFactory` es un factory simple que instancia el proveedor correcto según el `code` de `ProviderConfig`. No requiere registro previo; cada proveedor se agrega directamente en el código del factory.
 
 ```python
 # src/infrastructure/providers/factory.py
-from dataclasses import dataclass
-from ...domain.interfaces import ProviderInterface
-from ...domain.entities import ProviderConfig
-from ...domain.exceptions import ProviderNotRegisteredError
+from src.domain.entities import ProviderConfig
+from src.domain.exceptions import ProviderNotRegisteredError
+from src.domain.interfaces import ProviderInterface
+from src.infrastructure.providers.task.youtrack import YouTrackProvider
 
-@dataclass
-class ProviderRegistration:
-    category: str                    # "task" | "git" | "file"
-    cls: type[ProviderInterface]
 
 class ProviderFactory:
-    _registry: dict[str, ProviderRegistration] = {}
+    def __init__(self, config: ProviderConfig) -> None:
+        self.config = config
 
-    @classmethod
-    def register(cls, provider_name: str, category: str, provider_cls: type[ProviderInterface]) -> None:
-        """Registra un proveedor con su categoría. OCP: no modifica el factory al agregar nuevos."""
-        cls._registry[provider_name] = ProviderRegistration(category=category, cls=provider_cls)
-
-    @classmethod
-    def create(cls, provider_name: str, config: ProviderConfig) -> ProviderInterface:
-        """Instancia el proveedor concreto inferido por nombre."""
-        if provider_name not in cls._registry:
-            available = ", ".join(cls._registry.keys())
-            raise ProviderNotRegisteredError(
-                f"Proveedor '{provider_name}' no registrado. Disponibles: {available}"
-            )
-        return cls._registry[provider_name].cls(config)
-
-    @classmethod
-    def get_category(cls, provider_name: str) -> str:
-        """Retorna la categoría del proveedor ('task', 'git', 'file')."""
-        if provider_name not in cls._registry:
-            raise ProviderNotRegisteredError(f"Proveedor '{provider_name}' no registrado.")
-        return cls._registry[provider_name].category
+    def create(self) -> ProviderInterface:
+        code = self.config.code
+        if code == "youtrack":
+            return YouTrackProvider(self.config)
+        raise ProviderNotRegisteredError(
+            f"Proveedor '{code}' no reconocido. Disponibles: youtrack"
+        )
 ```
 
-Los proveedores se registran al importar el módulo raíz de providers. Agregar un nuevo proveedor solo requiere crear la clase e importarla aquí:
+**Cómo agregar un nuevo proveedor:**
+- Crear la clase en el directorio correspondiente (`task/`, `git/`, `file/`)
+- Agregar un `if` en el método `create()` del factory
+- El factory se usa así:
 
 ```python
-# src/infrastructure/providers/__init__.py
-from .factory import ProviderFactory
-
-# Categoría: task
-from .task.youtrack import YouTrackProvider
-from .task.jira import JiraProvider
-ProviderFactory.register("youtrack", "task", YouTrackProvider)
-ProviderFactory.register("jira",     "task", JiraProvider)
-
-# Categoría: git (stubs — se activan cuando se implementen)
-# from .git.github import GitHubProvider
-# from .git.gitlab import GitLabProvider
-# ProviderFactory.register("github", "git", GitHubProvider)
-# ProviderFactory.register("gitlab", "git", GitLabProvider)
-
-# Categoría: file (stubs — se activan cuando se implementen)
-# from .file.pdf import PDFProvider
-# from .file.markdown import MarkdownProvider
-# ProviderFactory.register("pdf",      "file", PDFProvider)
-# ProviderFactory.register("markdown", "file", MarkdownProvider)
+# Uso simple - el code determina qué provider instanciar
+config = ProviderConfig(code="youtrack", token="xxx", base_url="https://...")
+factory = ProviderFactory(config)
+provider = factory.create()
 ```
-
-**Cómo escalar:**
-- Nuevo proveedor en categoría existente (ej. Jira): crear `task/jira.py` implementando `ProviderInterface`, descomentar el registro.
-- Nueva categoría (ej. git): crear `git/github.py`, descomentar el registro. Los casos de uso no cambian.
-- La categoría queda disponible vía `ProviderFactory.get_category(provider_name)` para lógica futura que necesite diferenciar comportamiento por tipo.
 
 ---
 
 ## Infrastructure Layer: LLMFactory
 
+El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. No requiere registro previo.
+
 ```python
 # src/infrastructure/llm/factory.py
-from ...domain.interfaces import LLMEngineInterface
-from ...domain.entities import LLMConfig
-from ...domain.exceptions import LLMEngineNotRegisteredError
+from src.domain.entities import LLMConfig
+from src.domain.exceptions import LLMEngineNotRegisteredError
+from src.domain.interfaces import LLMEngineInterface
+from src.infrastructure.llm.gemini import GeminiLLMEngine
+
 
 class LLMFactory:
-    _registry: dict[str, type[LLMEngineInterface]] = {}
+    def __init__(self, config: LLMConfig) -> None:
+        self.config = config
 
-    @classmethod
-    def register(cls, engine_type: str, cls_: type[LLMEngineInterface]) -> None:
-        """Registra un nuevo motor LLM. Permite extensión sin modificar el factory (OCP)."""
-        cls._registry[engine_type] = cls_
-
-    @classmethod
-    def create(cls, engine_type: str, config: LLMConfig) -> LLMEngineInterface:
-        """Instancia y retorna el motor LLM concreto para el tipo dado."""
-        if engine_type not in cls._registry:
-            available = ", ".join(cls._registry.keys())
-            raise LLMEngineNotRegisteredError(
-                f"Motor LLM '{engine_type}' no registrado. Disponibles: {available}"
-            )
-        return cls._registry[engine_type](config)
+    def create(self) -> LLMEngineInterface:
+        engine_type = self.config.engine_type
+        if engine_type == "gemini":
+            return GeminiLLMEngine(self.config)
+        raise LLMEngineNotRegisteredError(
+            f"Motor LLM '{engine_type}' no reconocido. Disponibles: gemini"
+        )
 ```
 
-Los motores se registran al importar el módulo:
+**Uso:**
 
 ```python
-# src/infrastructure/llm/__init__.py
-from .factory import LLMFactory
-from .gemini import GeminiLLMEngine
-from .openai import OpenAILLMEngine
-
-LLMFactory.register("gemini", GeminiLLMEngine)
-LLMFactory.register("openai", OpenAILLMEngine)
+# Uso simple - engine_type determina qué motor instanciar
+config = LLMConfig(engine_type="gemini", api_key="xxx")
+factory = LLMFactory(config)
+engine = factory.create()
 ```
 
 ---
@@ -719,6 +669,7 @@ from ..use_cases.read_full import ReadFullUseCase
 from ..use_cases.read_summarize import ReadSummarizeUseCase
 from ..use_cases.read_chunks import ReadChunksUseCase
 from ...infrastructure.providers.factory import ProviderFactory
+from ...infrastructure.llm.factory import LLMFactory
 
 class ContextService:
     """Fachada que simplifica el acceso a los casos de uso desde los controllers."""
@@ -734,7 +685,7 @@ class ContextService:
                 f"Proveedor '{provider_name}' no configurado en la sesión. Disponibles: {available}"
             )
         provider_config = session.providers[provider_name]
-        provider = ProviderFactory.create(provider_name, provider_config)
+        provider = ProviderFactory(provider_config).create()
         return ReadFullUseCase(provider=provider, cache=self._cache).execute(
             item_id=item_id, provider_name=provider_name
         )
@@ -748,7 +699,7 @@ class ContextService:
                 f"Proveedor '{provider_name}' no configurado en la sesión. Disponibles: {available}"
             )
         provider_config = session.providers[provider_name]
-        provider = ProviderFactory.create(provider_name, provider_config)
+        provider = ProviderFactory(provider_config).create()
         return ReadSummarizeUseCase(provider=provider, cache=self._cache, llm=self._llm).execute(
             item_id=item_id, provider_name=provider_name, max_tokens=max_tokens
         )
@@ -766,7 +717,7 @@ class ContextService:
                 f"Proveedor '{provider_name}' no configurado en la sesión. Disponibles: {available}"
             )
         provider_config = session.providers[provider_name]
-        provider = ProviderFactory.create(provider_name, provider_config)
+        provider = ProviderFactory(provider_config).create()
         return ReadChunksUseCase(provider=provider, cache=self._cache, llm=self._llm).execute(
             item_id=item_id, provider_name=provider_name, chunk_indices=chunk_indices
         )
