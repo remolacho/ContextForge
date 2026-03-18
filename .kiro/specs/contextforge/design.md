@@ -953,9 +953,13 @@ class ContextItemBuilder:
         return self
 
     def build(self) -> ContextItem:
-        """Calcula raw_content y content_hash automáticamente."""
-        parts = [self._title, self._description] + self._comments
-        raw = "\n".join(filter(None, parts))
+        """Calcula raw_content y content_hash automáticamente.
+        
+        raw_content = título + descripción (sin comentarios).
+        Los comentarios no se incluyen en el hash porque la API de YouTrack
+        los trae en un endpoint separado.
+        """
+        raw = "\n".join(filter(None, [self._title, self._description]))
         content_hash = hashlib.sha256(raw.encode()).hexdigest()
         return ContextItem(
             item_id=self._item_id,
@@ -967,22 +971,6 @@ class ContextItemBuilder:
             raw_content=raw,
             content_hash=content_hash,
         )
-```
-
-**Ejemplo de uso en YouTrackProvider:**
-```python
-# YouTrackProvider transforma su JSON específico a campos genéricos
-data = response.json()
-return (
-    ContextItemBuilder()
-    .set_item_id(item_id)
-    .set_provider_name("youtrack")
-    .set_title(data.get("summary", ""))
-    .set_description(data.get("description", ""))
-    .set_comments([c["text"] for c in data.get("comments", [])])
-    .set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})
-    .build()
-)
 ```
 
 ```python
@@ -1042,6 +1030,7 @@ from ....domain.entities import ContextItem, ProviderConfig
 from ....domain.exceptions import AuthenticationError, ItemNotFoundError, ProviderServerError
 from ...builders.context_item import ContextItemBuilder
 
+
 class YouTrackProvider(ProviderInterface):
     def __init__(self, config: ProviderConfig):
         self._config = config
@@ -1050,7 +1039,7 @@ class YouTrackProvider(ProviderInterface):
         url = f"{config.base_url}/api/issues/{item_id}"
         headers = {"Authorization": f"Bearer {config.token}"}
         response = requests.get(url, headers=headers, params={
-            "fields": "id,summary,description,comments(text),customFields(name,value)"
+            "fields": "id,idReadable,summary,description"
         })
         if response.status_code in (401, 403):
             raise AuthenticationError("Token de autenticación inválido o expirado")
@@ -1060,7 +1049,6 @@ class YouTrackProvider(ProviderInterface):
             raise ProviderServerError(f"Error del servidor YouTrack: HTTP {response.status_code}")
         response.raise_for_status()
 
-        # Transformar JSON específico de YouTrack a campos genéricos
         data = response.json()
         return (
             ContextItemBuilder()
@@ -1068,14 +1056,40 @@ class YouTrackProvider(ProviderInterface):
             .set_provider_name("youtrack")
             .set_title(data.get("summary", ""))
             .set_description(data.get("description", ""))
-            .set_comments([c["text"] for c in data.get("comments", [])])
-            .set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})
+            .set_comments([])
+            .set_custom_fields({})
             .build()
         )
 
     def validate_config(self, config: ProviderConfig) -> bool:
         return bool(config.base_url and config.token)
 ```
+
+---
+
+## API de YouTrack
+
+**Endpoint:**
+```
+GET /api/issues/{issueId}?fields=id,idReadable,summary,description
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Respuesta:**
+```json
+{
+  "id": "2-456",
+  "idReadable": "PROJ-123",
+  "summary": "Error en login",
+  "description": "Cuando el usuario intenta iniciar sesión, ocurre un error 500 en producción."
+}
+```
+
+> **Nota:** Los comentarios no vienen en el mismo endpoint. Se documentarán en un endpoint separado cuando se implemente `get_comments()`.
 
 ---
 

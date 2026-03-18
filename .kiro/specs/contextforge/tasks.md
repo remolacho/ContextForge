@@ -153,25 +153,31 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     > El único proveedor funcional del MVP. Hace una llamada HTTP a la API de YouTrack, maneja los errores de autenticación y construye el `ContextItem` usando el builder. **El proveedor es responsable de transformar su respuesta JSON específica a campos genéricos** antes de pasarlos al builder.
     - Crear `src/infrastructure/providers/task/youtrack.py` implementando `ProviderInterface`:
       - Constructor recibe `config: ProviderConfig` y lo guarda en `self._config`
-      - `get_item(item_id, config)`: hace GET a `{config.base_url}/api/issues/{item_id}?fields=id,summary,description,comments(text),customFields(name,value)` con header `Authorization: Bearer {config.token}`
+      - `get_item(item_id, config)`: hace GET a `{config.base_url}/api/issues/{item_id}?fields=id,idReadable,summary,description` con header `Authorization: Bearer {config.token}`
       - Mapeo de errores HTTP: 401/403 → lanzar `AuthenticationError`, 404 → `ItemNotFoundError`, 5xx → `ProviderServerError`
       - Usar `ContextItemBuilder` para construir el `ContextItem` transformando el JSON de YouTrack a campos genéricos:
         - `set_item_id(item_id)`
         - `set_provider_name("youtrack")`
         - `set_title(data.get("summary", ""))`
         - `set_description(data.get("description", ""))`
-        - `set_comments([c["text"] for c in data.get("comments", [])])`
-        - `set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})`
-        - `build()` (calcula SHA-256 automáticamente)
+        - `set_comments([])` (comentarios vienen en endpoint separado)
+        - `set_custom_fields({})` (custom fields no disponibles en este endpoint)
+        - `build()` (calcula SHA-256 automáticamente de título + descripción)
       - `validate_config(config)`: retorna `True` si `token` no está vacío y `base_url` es una URL válida
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§1,2,3,4,5,6)_
 
-  - [ ]* 6.2 Escribir property tests para YouTrackProvider
-    > Verifica que el header de autenticación siempre está presente y que todos los campos del JSON de YouTrack se extraen correctamente.
-    - Archivo: `tests/property/test_properties_providers.py`
-    - **Propiedad 13:** Para cualquier token válido, todas las solicitudes HTTP incluyen el header `Authorization: Bearer {token}`. Usar `unittest.mock.patch` para interceptar las llamadas HTTP.
-    - **Propiedad 14:** Para cualquier respuesta JSON válida de YouTrack, `get_item()` extrae correctamente `summary`, `description`, `comments` y `customFields` sin perder datos.
-    - Comentario: `# Feature: contextforge, Propiedad 13: Header de autenticación en todas las solicitudes al proveedor`
+  - [ ]* 6.2 Escribir unit tests para YouTrackProvider
+    > Verifica que `validate_config()` retorna valores correctos y que `get_item()` maneja errores HTTP correctamente.
+    - Archivo: `tests/unit/test_youtrack_provider.py`
+    - Tests para `validate_config()`:
+      - URL válida + token no vacío → `True`
+      - URL inválida → `False`
+      - Token vacío → `False`
+      - URL None → `False`
+    - Tests para `get_item()` con mock de `requests.Response`:
+      - Status 401/403 → `AuthenticationError`
+      - Status 404 → `ItemNotFoundError`
+      - Status 5xx → `ProviderServerError`
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§2,3)_
 
   - [ ] 6.3 Crear stubs de proveedores futuros
