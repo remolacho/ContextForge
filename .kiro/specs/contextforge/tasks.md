@@ -15,7 +15,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
   - Crear `pyproject.toml` con dependencias: `fastapi`, `uvicorn`, `pydantic-settings`, `chromadb`, `langchain`, `langchain-google-genai`, `langchain-core`, `requests`, `hypothesis`, `pytest`, `pytest-asyncio`
   - Crear `requirements.txt` generado desde `pyproject.toml` (ejecutar `pip-compile` o exportar manualmente)
   - Crear `.env.example` documentando todas las variables: `LLM_ENGINE`, `LLM_API_KEY`, `CHROMA_HOST`, `CHROMA_PORT`, `MCP_PORT`, `LOG_LEVEL`
-  - Crear `Dockerfile` basado en `python:3.12-slim` con `PYTHONPATH=/app` para que los imports funcionen desde la raíz
+  - Crear `Dockerfile` basado en `python:3.11-slim` con `PYTHONPATH=/app` para que los imports funcionen desde la raíz
   - Crear `docker-compose.yml` con dos servicios: `contextforge` (puerto 8999) y `chromadb` (puerto 9000→8000), conectados en red `contextforge-net`, con volumen `chroma-data` para persistencia
   - Crear todos los directorios y archivos `__init__.py` vacíos según la estructura del `design.md` (sin `__init__.py` Python no reconoce los módulos)
   - _Ver `requirements.md`: Req. 11 — Infraestructura Docker (criterios 1-5)_

@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  contextforge:
+    build: .
+    ports:
+      - "8999:8999"
+    environment:
+      - LLM_ENGINE=${LLM_ENGINE:-gemini}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - MCP_PORT=8999
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - chromadb
+    networks:
+      - contextforge-net
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "9000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    networks:
+      - contextforge-net
+
+networks:
+  contextforge-net:
+    driver: bridge
+
+volumes:
+  chroma-data:

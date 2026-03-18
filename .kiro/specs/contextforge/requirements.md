@@ -217,7 +217,7 @@ Ejemplo de configuración que el cliente envía al servidor:
 
 #### Criterios de Aceptación
 
-1. THE ContextForge SHALL estar empaquetado en una imagen Docker basada en Python 3.12 con todas las dependencias instaladas.
+1. THE ContextForge SHALL estar empaquetado en una imagen Docker basada en Python 3.11 con todas las dependencias instaladas.
 2. THE ContextForge SHALL leer únicamente la configuración de ChromaDB (`CHROMA_HOST`, `CHROMA_PORT`) y el puerto del servidor (`MCP_PORT`) desde variables de entorno. La configuración de proveedores y motor LLM se recibe por sesión MCP, no por variables de entorno.
 3. WHERE Docker Compose está disponible, THE ContextForge SHALL definir un `docker-compose.yml` que incluya el servicio `contextforge` y el servicio `chromadb` en la misma red `contextforge-net`.
 4. WHERE Docker Compose está disponible, THE ContextForge SHALL definir un volumen Docker nombrado `chroma-data` para persistir los datos de ChromaDB.
