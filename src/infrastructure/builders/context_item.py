@@ -47,8 +47,6 @@ class ContextItemBuilder:
         raw_content = self._title or ""
         if self._description:
             raw_content += f"\n{self._description}"
-        for comment in self._comments:
-            raw_content += f"\n{comment}"
 
         content_hash = hashlib.sha256(raw_content.encode()).hexdigest()
 
