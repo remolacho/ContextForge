@@ -124,8 +124,8 @@ graph LR
 
 ### 3. Builder (x2)
 
-- **`ContextItemBuilder`**: construye el objeto `ContextItem` desde la respuesta raw del proveedor (ej. YouTrack JSON → `ContextItem` con `raw_content` + `content_hash`).
-- **`CacheEntryBuilder`**: construye `CacheEntry` con todos sus metadatos de forma fluida.
+- **`ContextItemBuilder`**: construye el objeto `ContextItem` desde campos genéricos (no desde JSON específico de proveedor). Cada proveedor es responsable de transformar su respuesta JSON a campos genéricos antes de pasarlos al builder. Esto permite que el builder sea agnóstico al proveedor y cumpla con el principio Open/Closed.
+- **`CacheEntryBuilder`**: construye `CacheEntry` con todos sus metadatos de forma fluida. Este builder NO se ve afectado por el cambio porque recibe un `ContextItem` ya parseado.
 
 ### 4. Strategy (implícito en Factory)
 
@@ -546,7 +546,14 @@ class ProviderInterface(ABC):
 
 class CacheRepositoryInterface(ABC):
     @abstractmethod
-    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None: ...
+    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None:
+        """Busca en caché por item_id + provider_name + content_hash + tool + params adicionales.
+        
+        IMPORTANTE: El content_hash es requerido para buscar. Se calcula desde el raw_content
+        del ContextItem después de obtenerlo del proveedor. Esto permite detectar si el contenido
+        cambió (nuevo content_hash = cache miss).
+        """
+        ...
 
     @abstractmethod
     def store(self, entry: CacheEntry) -> None: ...
@@ -771,6 +778,8 @@ class ContextService:
 
 Los casos de uso contienen la **lógica de negocio real**: validación de parámetros, cálculo de `content_hash`, decisión de caché (hit/miss/invalidación) y orquestación del flujo completo.
 
+> **Flujo híbrido:** Primero ir al proveedor para obtener contenido fresco y calcular content_hash. Luego buscar en caché por content_hash + tool + params. Si hay hit, retornar caché. Si hay miss, ejecutar el tool (summarize/chunks), guardar en caché y retornar. Esto garantiza datos actualizados mientras optimiza llamadas al LLM cuando el contenido no cambió.
+
 ```python
 # src/application/use_cases/read_full.py
 from datetime import datetime, timezone
@@ -784,10 +793,15 @@ class ReadFullUseCase:
         self._cache = cache
 
     def execute(self, item_id: str, provider_name: str) -> CacheEntry:
+        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
+
+        # 2. Buscar en caché por content_hash + tool
         cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_full")
         if cached:
             return cached
+
+        # 3. CACHE MISS: Guardar en caché con content_hash
         entry = (
             CacheEntryBuilder()
             .for_item(item)
@@ -817,13 +831,21 @@ class ReadSummarizeUseCase:
     def execute(self, item_id: str, provider_name: str, max_tokens: int = 500) -> CacheEntry:
         if not (1 <= max_tokens <= 10000):
             raise ValidationError("max_tokens debe estar entre 1 y 10000")
+
+        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
+
+        # 2. Buscar en caché por content_hash + tool + max_tokens
         cached = self._cache.lookup(
             item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens
         )
         if cached:
             return cached
+
+        # 3. CACHE MISS: Generar resumen con LLM
         summary = self._llm.summarize(item.raw_content, max_tokens)
+
+        # 4. Guardar en caché
         entry = (
             CacheEntryBuilder()
             .for_item(item)
@@ -853,12 +875,18 @@ class ReadChunksUseCase:
         self._llm = llm
 
     def execute(self, item_id: str, provider_name: str, chunk_indices: list[int] | None = None) -> list[Chunk]:
+        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
+
+        # 2. Buscar en caché por content_hash + tool
         cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")
         if cached:
             chunks = self._deserialize_chunks(cached)
         else:
+            # 3. CACHE MISS: Dividir en chunks
             chunks = self._split_into_chunks(item.raw_content)
+
+            # 4. Guardar cada chunk en caché
             for chunk in chunks:
                 entry = (
                     CacheEntryBuilder()
@@ -873,6 +901,8 @@ class ReadChunksUseCase:
                     .build()
                 )
                 self._cache.store(entry)
+
+        # 5. Filtrar por índices si se solicitaron
         return self._filter_by_indices(chunks, chunk_indices)
 
     def _split_into_chunks(self, content: str) -> list[Chunk]:
@@ -931,6 +961,8 @@ class ReadChunksUseCase:
 
 ## Infrastructure Layer: Builders
 
+> **Nota importante:** El `ContextItemBuilder` debe ser **genérico y agnóstico al proveedor**. Cada proveedor (YouTrack, Jira, GitHub, etc.) es responsable de transformar su respuesta JSON específica a campos genéricos (`title`, `description`, `comments`, `custom_fields`) antes de pasarlos al builder. Esto cumple con el principio Open/Closed: agregar un nuevo proveedor no requiere modificar el builder.
+
 ```python
 # src/infrastructure/builders/context_item.py
 import hashlib
@@ -953,13 +985,20 @@ class ContextItemBuilder:
         self._provider_name = name
         return self
 
-    def from_youtrack_response(self, data: dict) -> "ContextItemBuilder":
-        self._title = data.get("summary", "")
-        self._description = data.get("description", "") or ""
-        self._comments = [c["text"] for c in data.get("comments", []) if c.get("text")]
-        self._custom_fields = {
-            f["name"]: f["value"] for f in data.get("customFields", []) if f.get("name")
-        }
+    def set_title(self, title: str) -> "ContextItemBuilder":
+        self._title = title
+        return self
+
+    def set_description(self, description: str) -> "ContextItemBuilder":
+        self._description = description
+        return self
+
+    def set_comments(self, comments: list[str]) -> "ContextItemBuilder":
+        self._comments = comments
+        return self
+
+    def set_custom_fields(self, custom_fields: dict) -> "ContextItemBuilder":
+        self._custom_fields = custom_fields
         return self
 
     def build(self) -> ContextItem:
@@ -977,6 +1016,22 @@ class ContextItemBuilder:
             raw_content=raw,
             content_hash=content_hash,
         )
+```
+
+**Ejemplo de uso en YouTrackProvider:**
+```python
+# YouTrackProvider transforma su JSON específico a campos genéricos
+data = response.json()
+return (
+    ContextItemBuilder()
+    .set_item_id(item_id)
+    .set_provider_name("youtrack")
+    .set_title(data.get("summary", ""))
+    .set_description(data.get("description", ""))
+    .set_comments([c["text"] for c in data.get("comments", [])])
+    .set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})
+    .build()
+)
 ```
 
 ```python
@@ -1026,6 +1081,8 @@ class CacheEntryBuilder:
 
 ## Infrastructure Layer: YouTrackProvider
 
+> **Nota:** YouTrackProvider transforma su respuesta JSON específica a campos genéricos antes de pasarlos al `ContextItemBuilder`. Esto permite que el builder sea reutilizable por cualquier proveedor.
+
 ```python
 # src/infrastructure/providers/task/youtrack.py
 import requests
@@ -1051,11 +1108,17 @@ class YouTrackProvider(ProviderInterface):
         if response.status_code >= 500:
             raise ProviderServerError(f"Error del servidor YouTrack: HTTP {response.status_code}")
         response.raise_for_status()
+
+        # Transformar JSON específico de YouTrack a campos genéricos
+        data = response.json()
         return (
             ContextItemBuilder()
             .set_item_id(item_id)
             .set_provider_name("youtrack")
-            .from_youtrack_response(response.json())
+            .set_title(data.get("summary", ""))
+            .set_description(data.get("description", ""))
+            .set_comments([c["text"] for c in data.get("comments", [])])
+            .set_custom_fields({f["name"]: f["value"] for f in data.get("customFields", [])})
             .build()
         )
 
