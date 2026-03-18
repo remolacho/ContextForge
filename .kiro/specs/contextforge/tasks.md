@@ -246,72 +246,76 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Test `invalidate`: verificar que `delete` es llamado con el filtro `{"item_id": ..., "provider_name": ..., "tool": ...}`
     - _Ver `requirements.md`: Req. 10 — ChromaDB (§2), Req. 6 — Caché (§1)_
 
-- [ ] 9. Implementar Application Layer: Casos de Uso
-  > Los casos de uso son el corazón de la lógica de negocio. Orquestan el flujo: obtener ítem del proveedor → verificar caché → procesar si es necesario → guardar en caché → retornar resultado. No saben nada de FastAPI, ChromaDB ni Gemini; solo hablan con interfaces.
+  - [ ] 9. Implementar Application Layer: Casos de Uso
+    > Los casos de uso son el corazón de la lógica de negocio. **IMPORTANTE:** El flujo debe ser: 1) verificar caché PRIMERO, 2) si hay hit retornar, 3) si hay miss ir al proveedor, 4) procesar (si aplica con LLM), 5) guardar en caché, 6) retornar. Esto evita consultas redundantes al proveedor y al LLM.
 
-  - [ ] 9.1 Implementar `ReadFullUseCase`
-    > Devuelve el texto completo del ítem. Si ya está en caché con el mismo hash, lo retorna directamente sin llamar al proveedor.
-    - Crear `src/application/use_cases/read_full.py`:
-      - Constructor recibe `provider: ProviderInterface` y `cache: CacheRepositoryInterface`
-      - `execute(item_id, provider_name)`:
-        1. Llamar `provider.get_item(item_id, provider._config)` para obtener el `ContextItem`
-        2. Llamar `cache.lookup(item_id, provider_name, item.content_hash, "read_full")`
-        3. Si hay hit: retornar la entrada cacheada
-        4. Si hay miss: construir `CacheEntry` con `CacheEntryBuilder`, llamar `cache.store(entry)` y retornar la entrada con `from_cache=False`
-    - _Ver `requirements.md`: Req. 3 — read_full (§1,2,3,4)_
+    - [ ] 9.1 Implementar `ReadFullUseCase`
+      > Devuelve el texto completo del ítem. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor para obtener contenido fresco y calcular content_hash, luego busca en caché. Si hay hit (contenido no cambió), retorna caché. Si hay miss, guarda y retorna.
+      - Crear `src/application/use_cases/read_full.py`:
+        - Constructor recibe `provider: ProviderInterface` y `cache: CacheRepositoryInterface`
+        - `execute(item_id, provider_name)`:
+          1. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
+          2. Buscar en caché con `cache.lookup(item_id, provider_name, item.content_hash, "read_full")`
+          3. Si hay hit: retornar la entrada cacheada
+          4. Si hay miss: construir `CacheEntry` con `CacheEntryBuilder`, llamar `cache.store(entry)` y retornar
+      - _Ver `requirements.md`: Req. 3 — read_full (§1,2,3,4)_
 
-  - [ ]* 9.2 Escribir unit tests para ReadFullUseCase
-    > Tests con mocks de proveedor y caché para verificar el comportamiento en cache hit y miss.
-    - Archivo: `tests/unit/test_read_full_usecase.py`
-    - Test cache hit: mock de `cache.lookup` retorna una `CacheEntry` → verificar que `provider.get_item` NO es llamado y se retorna `from_cache=True`
-    - Test cache miss: mock de `cache.lookup` retorna `None` → verificar que `provider.get_item` SÍ es llamado, `cache.store` es llamado y se retorna `from_cache=False`
-    - _Ver `requirements.md`: Req. 3 — read_full (§3,4)_
+    - [ ]* 9.2 Escribir unit tests para ReadFullUseCase
+      > Tests con mocks de proveedor y caché para verificar el comportamiento en cache hit y miss. **IMPORTANTE:** Verificar que el flujo híbrido primero va al proveedor, luego busca en caché.
+      - Archivo: `tests/unit/test_read_full_usecase.py`
+      - Test cache hit: mock de `provider.get_item` retorna item con content_hash → mock de `cache.lookup` retorna CacheEntry → verificar que se retorna `from_cache=True`
+      - Test cache miss: mock de `provider.get_item` retorna item → mock de `cache.lookup` retorna `None` → verificar que `cache.store` es llamado y se retorna `from_cache=False`
+      - Test flujo: verificar que `provider.get_item` SIEMPRE es llamado (datos frescos), y `cache.lookup` se llama con el content_hash del item
+      - _Ver `requirements.md`: Req. 3 — read_full (§3,4)_
 
   - [ ] 9.3 Implementar `ReadSummarizeUseCase`
-    > Devuelve un resumen del ítem generado por el LLM. El `max_tokens` forma parte de la clave de caché, por lo que un resumen de 200 tokens y uno de 500 tokens se cachean por separado.
+    > Devuelve un resumen del ítem generado por el LLM. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, calcula content_hash, luego busca en caché. Si hay hit (contenido no cambió), retorna caché sin llamar LLM.
     - Crear `src/application/use_cases/read_summarize.py`:
       - Constructor recibe `provider`, `cache` y `llm: LLMEngineInterface`
       - `execute(item_id, provider_name, max_tokens=500)`:
         1. Validar que `max_tokens` esté en el rango [1, 10000]; si no, lanzar `ValidationError` con mensaje descriptivo
-        2. Obtener el ítem del proveedor
-        3. Verificar caché incluyendo `max_tokens` como parámetro extra en `lookup(..., max_tokens=max_tokens)`
-        4. Si hay miss: llamar `llm.summarize(item.raw_content, max_tokens)` para generar el resumen
-        5. Construir `CacheEntry` con el resumen y `metadata={"max_tokens": max_tokens}`, guardar en caché y retornar
+        2. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
+        3. Buscar en caché con `cache.lookup(item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens)`
+        4. Si hay hit: retornar la entrada cacheada
+        5. Si hay miss: llamar `llm.summarize(item.raw_content, max_tokens)` para generar el resumen
+        6. Construir `CacheEntry` con el resumen y `metadata={"max_tokens": max_tokens}`, guardar en caché y retornar
     - _Ver `requirements.md`: Req. 4 — read_summarize (§1,2,3,4,5,6,7)_
 
   - [ ]* 9.4 Escribir property tests para ReadSummarizeUseCase
-    > Verifica que la validación de `max_tokens` es robusta y que el caché diferencia correctamente por valor de `max_tokens`.
+    > Verifica que la validación de `max_tokens` es robusta y que el flujo híbrido detecta cambios de contenido correctamente.
     - Archivo: `tests/property/test_properties_validation.py`
     - **Propiedad 5:** Para cualquier `max_tokens` fuera del rango [1, 10000], `execute()` siempre lanza `ValidationError`. Para cualquier valor dentro del rango, nunca lanza ese error.
-    - **Propiedad 12:** Si se llama con `max_tokens=A` y luego con `max_tokens=B` (A ≠ B), la segunda llamada siempre produce un cache miss (el LLM es llamado de nuevo).
+    - **Propiedad 12:** Si el contenido cambia (nuevo content_hash), siempre hay cache miss y el LLM es llamado. Si el contenido no cambió (mismo content_hash), hay cache hit y el LLM no es llamado.
     - Comentario: `# Feature: contextforge, Propiedad 5: Rechazo de max_tokens fuera de rango`
     - _Ver `requirements.md`: Req. 4 — read_summarize (§7), Req. 6 — Caché (§2)_
 
   - [ ] 9.5 Implementar `ReadChunksUseCase`
-    > Divide el texto del ítem en fragmentos de máximo 500 tokens, respetando límites de oraciones. El cliente puede pedir todos los chunks o solo algunos por índice.
+    > Divide el contenido del ítem en fragmentos de máximo 500 tokens, respetando límites de oraciones. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, luego busca en caché por content_hash. El cliente puede pedir todos los chunks o solo algunos por índice.
     - Crear `src/application/use_cases/read_chunks.py`:
       - Constructor recibe `provider`, `cache` y `llm`
       - `execute(item_id, provider_name, chunk_indices=None)`:
-        1. Obtener el ítem del proveedor
-        2. Verificar caché con `tool="read_chunks"`
-        3. Si hay miss: llamar `_split_into_chunks(item.raw_content)` para fragmentar
-        4. Guardar cada chunk en caché individualmente
-        5. Si `chunk_indices` no es `None`, llamar `_filter_by_indices(chunks, chunk_indices)`
-        6. Retornar la lista de chunks
+        1. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
+        2. Buscar en caché con `cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")`
+        3. Si hay hit: recuperar chunks de la caché
+        4. Si hay miss: llamar `_split_into_chunks(item.raw_content)` para fragmentar
+        5. Guardar cada chunk en caché individualmente
+        6. Si `chunk_indices` no es `None`, llamar `_filter_by_indices(chunks, chunk_indices)`
+        7. Retornar la lista de chunks
       - `_split_into_chunks(text)`: dividir usando regex `(?<=[.!?])\s+` para respetar límites de oración. Cada chunk debe tener ≤ 500 tokens (usar `llm.count_tokens()`). `chunk_index` empieza en 1. Actualizar `total_chunks` en todos los chunks al final.
       - `_filter_by_indices(chunks, indices)`: si algún índice está fuera del rango [1, total_chunks], lanzar `ValidationError` con mensaje que indique el rango válido
     - _Ver `requirements.md`: Req. 5 — read_chunks (§1,2,3,4,5,6,7,9)_
 
   - [ ]* 9.6 Escribir property tests para ReadChunksUseCase
-    > Verifica las propiedades fundamentales de la fragmentación: límite de tokens, cobertura completa del texto y selección correcta por índice.
+    > Verifica las propiedades fundamentales de la fragmentación y el flujo híbrido: límite de tokens, cobertura completa del texto, selección correcta por índice, y detección de cambios de contenido.
     - Archivo: `tests/property/test_properties_chunks.py`
     - **Propiedad 6:** Para cualquier texto, ningún chunk supera 500 tokens.
     - **Propiedad 7:** La concatenación de todos los chunks contiene todo el contenido original (sin pérdida de texto).
     - **Propiedad 8:** Si se piden los índices [i, j], el resultado contiene exactamente esos chunks y ningún otro.
     - **Propiedad 9:** Si se pide un índice fuera del rango válido, siempre se lanza `ValidationError` con el rango correcto en el mensaje.
     - **Propiedad 10:** Ningún chunk corta una oración a la mitad (el texto de cada chunk termina en `.`, `!` o `?` o es el último chunk).
+    - **Propiedad 11 (actualizada):** Si el content_hash del ítem cambia (contenido modificado en el proveedor), el flujo híbrido siempre detecta cache miss y regenera los chunks.
     - Comentario: `# Feature: contextforge, Propiedad 6: Chunks no exceden el límite de tokens`
-    - _Ver `requirements.md`: Req. 5 — read_chunks (§2,4,7,9)_
+    - _Ver `requirements.md`: Req. 5 — read_chunks (§2,4,7,9), Req. 6 — Caché (§3,5)_
 
 - [ ] 10. Checkpoint — Verificar capa de dominio y aplicación
   > Pausa para verificar que todo lo construido hasta aquí funciona correctamente antes de continuar con la interfaz HTTP. Es más fácil corregir errores de lógica ahora que después de agregar FastAPI encima.

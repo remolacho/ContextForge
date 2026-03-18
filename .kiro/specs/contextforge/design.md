@@ -546,7 +546,14 @@ class ProviderInterface(ABC):
 
 class CacheRepositoryInterface(ABC):
     @abstractmethod
-    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None: ...
+    def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None:
+        """Busca en caché por item_id + provider_name + content_hash + tool + params adicionales.
+        
+        IMPORTANTE: El content_hash es requerido para buscar. Se calcula desde el raw_content
+        del ContextItem después de obtenerlo del proveedor. Esto permite detectar si el contenido
+        cambió (nuevo content_hash = cache miss).
+        """
+        ...
 
     @abstractmethod
     def store(self, entry: CacheEntry) -> None: ...
@@ -771,6 +778,8 @@ class ContextService:
 
 Los casos de uso contienen la **lógica de negocio real**: validación de parámetros, cálculo de `content_hash`, decisión de caché (hit/miss/invalidación) y orquestación del flujo completo.
 
+> **Flujo híbrido:** Primero ir al proveedor para obtener contenido fresco y calcular content_hash. Luego buscar en caché por content_hash + tool + params. Si hay hit, retornar caché. Si hay miss, ejecutar el tool (summarize/chunks), guardar en caché y retornar. Esto garantiza datos actualizados mientras optimiza llamadas al LLM cuando el contenido no cambió.
+
 ```python
 # src/application/use_cases/read_full.py
 from datetime import datetime, timezone
@@ -784,10 +793,15 @@ class ReadFullUseCase:
         self._cache = cache
 
     def execute(self, item_id: str, provider_name: str) -> CacheEntry:
+        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
+
+        # 2. Buscar en caché por content_hash + tool
         cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_full")
         if cached:
             return cached
+
+        # 3. CACHE MISS: Guardar en caché con content_hash
         entry = (
             CacheEntryBuilder()
             .for_item(item)
@@ -817,13 +831,21 @@ class ReadSummarizeUseCase:
     def execute(self, item_id: str, provider_name: str, max_tokens: int = 500) -> CacheEntry:
         if not (1 <= max_tokens <= 10000):
             raise ValidationError("max_tokens debe estar entre 1 y 10000")
+
+        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
+
+        # 2. Buscar en caché por content_hash + tool + max_tokens
         cached = self._cache.lookup(
             item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens
         )
         if cached:
             return cached
+
+        # 3. CACHE MISS: Generar resumen con LLM
         summary = self._llm.summarize(item.raw_content, max_tokens)
+
+        # 4. Guardar en caché
         entry = (
             CacheEntryBuilder()
             .for_item(item)
@@ -853,12 +875,18 @@ class ReadChunksUseCase:
         self._llm = llm
 
     def execute(self, item_id: str, provider_name: str, chunk_indices: list[int] | None = None) -> list[Chunk]:
+        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
+
+        # 2. Buscar en caché por content_hash + tool
         cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")
         if cached:
             chunks = self._deserialize_chunks(cached)
         else:
+            # 3. CACHE MISS: Dividir en chunks
             chunks = self._split_into_chunks(item.raw_content)
+
+            # 4. Guardar cada chunk en caché
             for chunk in chunks:
                 entry = (
                     CacheEntryBuilder()
@@ -873,6 +901,8 @@ class ReadChunksUseCase:
                     .build()
                 )
                 self._cache.store(entry)
+
+        # 5. Filtrar por índices si se solicitaron
         return self._filter_by_indices(chunks, chunk_indices)
 
     def _split_into_chunks(self, content: str) -> list[Chunk]:

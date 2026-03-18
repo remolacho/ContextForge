@@ -15,7 +15,20 @@ class CacheRepositoryInterface(ABC):
     @abstractmethod
     def lookup(
         self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs
-    ) -> CacheEntry | None: ...
+    ) -> CacheEntry | None:
+        """Busca en caché por item_id + provider_name + content_hash + tool + params adicionales.
+
+        Args:
+            item_id: ID del ítem en el proveedor
+            provider_name: Nombre del proveedor (ej. "youtrack")
+            content_hash: SHA-256 del raw_content del ContextItem (requerido)
+            tool: Tool solicitado ("read_full", "read_summarize", "read_chunks")
+            **kwargs: Parámetros adicionales como max_tokens para summarize
+
+        Returns:
+            CacheEntry si hay hit, None si hay miss
+        """
+        ...
 
     @abstractmethod
     def store(self, entry: CacheEntry) -> None: ...
