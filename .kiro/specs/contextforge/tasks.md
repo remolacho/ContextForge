@@ -26,7 +26,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
   - [ ] 2.1 Crear entidades de dominio
     > Las entidades son los objetos de datos que viajan por todo el sistema. Usar `@dataclass` de Python para definirlas de forma limpia sin boilerplate.
     - Implementar `src/domain/entities.py` con las siguientes dataclasses:
-      - `ProviderConfig`: guarda `token` y `base_url` opcional de un proveedor (ej. YouTrack)
+      - `ProviderConfig`: guarda `code` ("youtrack", "jira"), `token` y `base_url` opcional de un proveedor
       - `SessionConfig`: contiene un dict `providers` donde la clave es el nombre del proveedor y el valor es su `ProviderConfig`
       - `LLMConfig`: guarda `engine_type` (ej. "gemini") y `api_key` para el motor LLM
       - `ContextItem`: representa un ítem recuperado del proveedor con `item_id`, `title`, `description`, `comments`, `custom_fields`, `raw_content` (texto concatenado) y `content_hash` (SHA-256)
@@ -111,38 +111,38 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 3 — read_full (§3), Req. 4 — read_summarize (§5), Req. 5 — read_chunks (§5)_
 
 - [ ] 5. Implementar Infrastructure Layer: Factories
-  > Los factories crean instancias de proveedores y motores LLM por nombre, sin que el código que los usa sepa qué clase concreta se instancia. Esto permite agregar nuevos proveedores o motores sin modificar el código existente (principio Open/Closed).
+  > Los factories crean instancias de proveedores y motores LLM basándose en el código/tipo recibido en la configuración. Es un enfoque simple: `ProviderFactory` usa `config.code` para saber qué clase instanciar, `LLMFactory` usa `config.engine_type`.
 
   - [ ] 5.1 Implementar `ProviderFactory`
-    > Registro central de proveedores. Cuando el cliente pide `"youtrack"`, el factory sabe qué clase instanciar y a qué categoría pertenece (`"task"`). Agregar Jira en el futuro solo requiere registrarlo aquí.
+    > Factory simple que instancia el proveedor según `config.code`. No requiere registro previo; cada proveedor se agrega directamente en el código.
     - Crear `src/infrastructure/providers/factory.py`:
-      - Dataclass `ProviderRegistration` con campos `category: str` y `cls: type[ProviderInterface]`
-      - Clase `ProviderFactory` con atributo de clase `_registry: dict[str, ProviderRegistration] = {}`
-      - `register(provider_name, category, provider_cls)`: agrega al registro. Ejemplo: `register("youtrack", "task", YouTrackProvider)`
-      - `create(provider_name, config)`: busca en el registro e instancia el proveedor. Si no existe, lanza `ProviderNotRegisteredError` con la lista de disponibles
-      - `get_category(provider_name)`: retorna la categoría (`"task"`, `"git"`, `"file"`) del proveedor registrado
+      - Clase `ProviderFactory` con constructor que recibe `config: ProviderConfig`
+      - Método `create()` que usa `if/elif` basado en `config.code`:
+        - `code == "youtrack"` → retorna `YouTrackProvider(self.config)`
+        - Si no coincide → lanza `ProviderNotRegisteredError`
     - _Ver `requirements.md`: Req. 7 — ProviderFactory (§1,2,3,4)_
 
   - [ ]* 5.2 Escribir property test para ProviderFactory
-    > Verifica que el factory siempre instancia la clase correcta y retorna la categoría correcta para cualquier proveedor registrado.
+    > Verifica que el factory instancia la clase correcta según `config.code`.
     - Archivo: `tests/property/test_properties_providers.py`
-    - **Propiedad 16:** Para cualquier proveedor registrado, `create()` retorna una instancia de la clase correcta y `get_category()` retorna la categoría registrada. Para nombres no registrados, siempre lanza `ProviderNotRegisteredError`.
-    - Comentario: `# Feature: contextforge, Propiedad 16: ProviderFactory instancia el proveedor correcto según nombre e infiere su categoría`
+    - Test: `ProviderFactory(config).create()` retorna `YouTrackProvider` para `code="youtrack"`
+    - Test: `ProviderFactory(config).create()` lanza `ProviderNotRegisteredError` para code desconocido
     - _Valida: Requisito 7.3_
 
   - [ ] 5.3 Implementar `LLMFactory`
-    > Igual que `ProviderFactory` pero para motores LLM. Permite cambiar de Gemini a OpenAI solo cambiando la variable de entorno `LLM_ENGINE`.
+    > Factory simple que instancia el motor según `config.engine_type`. No requiere registro previo.
     - Crear `src/infrastructure/llm/factory.py`:
-      - Clase `LLMFactory` con `_registry: dict[str, type[LLMEngineInterface]] = {}`
-      - `register(engine_type, cls_)`: registra un motor. Ejemplo: `register("gemini", GeminiLLMEngine)`
-      - `create(engine_type, config)`: instancia el motor. Si no existe, lanza `LLMEngineNotRegisteredError` con la lista de disponibles
+      - Clase `LLMFactory` con constructor que recibe `config: LLMConfig`
+      - Método `create()` que usa `if/elif` basado en `config.engine_type`:
+        - `engine_type == "gemini"` → retorna `GeminiLLMEngine(self.config)`
+        - Si no coincide → lanza `LLMEngineNotRegisteredError`
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§1,2,3,7)_
 
   - [ ]* 5.4 Escribir property test para LLMFactory
-    > Verifica que el factory siempre instancia el motor correcto y falla con error descriptivo para motores no registrados.
+    > Verifica que el factory instancia la clase correcta según `config.engine_type`.
     - Archivo: `tests/property/test_properties_providers.py`
-    - **Propiedad 18:** Para cualquier motor registrado, `create()` retorna una instancia de la clase correcta. Para tipos no registrados, siempre lanza `LLMEngineNotRegisteredError`.
-    - Comentario: `# Feature: contextforge, Propiedad 18: LLMFactory instancia el motor correcto según LLM_ENGINE`
+    - Test: `LLMFactory(config).create()` retorna `GeminiLLMEngine` para `engine_type="gemini"`
+    - Test: `LLMFactory(config).create()` lanza `LLMEngineNotRegisteredError` para engine desconocido
     - _Valida: Requisito 8.3_
 
 
@@ -176,20 +176,12 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
 
   - [ ] 6.3 Crear stubs de proveedores futuros
     > Crear los archivos vacíos ahora establece la estructura para escalar. Un stub implementa la interfaz pero lanza `NotImplementedError`, dejando claro que aún no está implementado. **Cuando se implementen, deberán transformar su JSON específico a campos genéricos usando ContextItemBuilder** (igual que YouTrackProvider).
-    - Crear `src/infrastructure/providers/task/jira.py`: clase `JiraProvider(ProviderInterface)` que lanza `NotImplementedError("JiraProvider no implementado aún")` en todos sus métodos
-    - Crear `src/infrastructure/providers/git/github.py`: `GitHubProvider` stub igual
-    - Crear `src/infrastructure/providers/git/gitlab.py`: `GitLabProvider` stub igual
-    - Crear `src/infrastructure/providers/file/pdf.py`: `PDFProvider` stub igual
-    - Crear `src/infrastructure/providers/file/markdown.py`: `MarkdownProvider` stub igual
+    - Crear `src/infrastructure/providers/git/github.py`: `GitHubProvider` stub que lanza `NotImplementedError`
+    - Crear `src/infrastructure/providers/git/gitlab.py`: `GitLabProvider` stub que lanza `NotImplementedError`
+    - Crear `src/infrastructure/providers/file/pdf.py`: `PDFProvider` stub que lanza `NotImplementedError`
+    - Crear `src/infrastructure/providers/file/markdown.py`: `MarkdownProvider` stub que lanza `NotImplementedError`
+    - **Nota:** Jira se agregará directamente en `ProviderFactory.create()` cuando se implemente
     - _Ver `requirements.md`: Req. 7 — ProviderFactory (§4,7)_
-
-  - [ ] 6.4 Registrar proveedores en `__init__.py`
-    > Al importar `src.infrastructure.providers`, Python ejecuta este `__init__.py` que registra todos los proveedores en el factory. Así `main.py` solo necesita hacer el import para activar el registro.
-    - Implementar `src/infrastructure/providers/__init__.py`:
-      - Importar `ProviderFactory`, `YouTrackProvider` y `JiraProvider`
-      - Registrar: `ProviderFactory.register("youtrack", "task", YouTrackProvider)` y `ProviderFactory.register("jira", "task", JiraProvider)`
-      - Dejar comentados los registros de git y file con un comentario `# Descomentar cuando se implemente`
-    - _Ver `requirements.md`: Req. 7 — ProviderFactory (§1,4)_
 
 - [ ] 7. Implementar Infrastructure Layer: LLM
   > Integra LangChain con Gemini para generar resúmenes. Usa el patrón LCEL (LangChain Expression Language) que encadena prompt → modelo → parser de forma declarativa y legible.
@@ -214,14 +206,6 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `count_tokens(text)`: retorna `self._llm.get_num_tokens(text)`
       - `get_embeddings(text)`: retorna `self._embeddings.embed_query(text)`
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§5,6,7)_
-
-  - [ ] 7.3 Crear stub `OpenAILLMEngine` y registrar motores
-    > El stub de OpenAI establece la estructura para cuando se quiera agregar ese motor. El `__init__.py` activa el registro al importar el módulo.
-    - Crear `src/infrastructure/llm/openai.py`: clase `OpenAILLMEngine(LLMEngineInterface)` que lanza `NotImplementedError` en todos sus métodos
-    - Implementar `src/infrastructure/llm/__init__.py`:
-      - Importar `LLMFactory`, `GeminiLLMEngine`, `OpenAILLMEngine`
-      - Registrar: `LLMFactory.register("gemini", GeminiLLMEngine)` y `LLMFactory.register("openai", OpenAILLMEngine)`
-    - _Ver `requirements.md`: Req. 8 — LLMFactory (§1,7)_
 
 
 - [ ] 8. Implementar Infrastructure Layer: ChromaCacheRepository

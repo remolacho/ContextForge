@@ -4,6 +4,7 @@ from typing import Optional
 
 @dataclass
 class ProviderConfig:
+    code: str                     # "youtrack", "jira" - identifica el proveedor
     token: str
     base_url: Optional[str] = None
 
