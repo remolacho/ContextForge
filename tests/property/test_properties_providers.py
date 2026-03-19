@@ -5,7 +5,7 @@ from src.domain.entities import LLMConfig, ProviderConfig
 from src.domain.exceptions import LLMEngineNotRegisteredError, ProviderNotRegisteredError
 from src.infrastructure.builders.context_item import ContextItemBuilder
 from src.infrastructure.llm.factory import LLMFactory
-from src.infrastructure.llm.gemini import GeminiLLMEngine
+from src.infrastructure.llm.summarized import Summarized
 from src.infrastructure.providers.factory import ProviderFactory
 from src.infrastructure.providers.task.youtrack import YouTrackProvider
 
@@ -101,11 +101,11 @@ def test_provider_factory_unknown_code():
 
 
 def test_llm_factory_creates_gemini():
-    """Propiedad 18: LLMFactory crea GeminiLLMEngine para engine_type='gemini'"""
+    """Propiedad 18: LLMFactory crea Summarized para engine_type='gemini'"""
     config = LLMConfig(engine_type="gemini", api_key="test")
     factory = LLMFactory(config)
     engine = factory.create()
-    assert isinstance(engine, GeminiLLMEngine)
+    assert isinstance(engine, Summarized)
 
 
 def test_llm_factory_unknown_engine():

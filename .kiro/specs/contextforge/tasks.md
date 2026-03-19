@@ -196,21 +196,34 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     > Centralizar el prompt en un archivo dedicado evita duplicación y facilita ajustarlo sin tocar la lógica del engine. Usar `ChatPromptTemplate.from_messages` con roles `system`/`human` es la práctica recomendada de LangChain.
     - Crear `src/infrastructure/llm/prompts.py`:
       - Importar `ChatPromptTemplate` de `langchain_core.prompts`
-      - Definir constante `SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([("system", "..."), ("human", "...")])` con variables `{max_tokens}` y `{content}`
-      - El mensaje `system` debe instruir al modelo a resumir en máximo `{max_tokens}` tokens
-      - El mensaje `human` debe contener el `{content}` a resumir
+      - Definir `SUMMARIZE_PROMPT` con el prompt técnico para IA:
+        ```
+        System: Eres un asistente técnico especializado en resumir contenido.
+        Reglas: máximo {max_tokens} tokens, información verificable, no inventar, priorizar problema/contexto/puntos clave
+        Human: Contenido a resumir: {content}
+        ```
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§6)_
 
-  - [ ] 7.2 Implementar `GeminiLLMEngine`
-    > Implementación concreta del motor LLM usando Gemini. Construye la chain LCEL que conecta el prompt con el modelo y el parser de salida.
-    - Crear `src/infrastructure/llm/gemini.py` implementando `LLMEngineInterface`:
-      - Constructor recibe `config: LLMConfig` e inicializa:
-        - `self._llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key=config.api_key)`
-        - `self._embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=config.api_key)`
-        - `self._chain = SUMMARIZE_PROMPT | self._llm | StrOutputParser()` (chain LCEL)
-      - `summarize(content, max_tokens)`: invoca `self._chain.invoke({"content": content, "max_tokens": max_tokens})`; capturar cualquier excepción y relanzar como `LLMError`
+  - [ ] 7.2 Refactorizar `GeminiLLMEngine`
+    > Implementación concreta del motor LLM usando Gemini. Expone `.llm` y `.embeddings` para que `Summarized` los use internamente.
+    - Refactorizar `src/infrastructure/llm/gemini.py` implementando `LLMEngineInterface`:
+      - Constructor recibe solo `config: LLMConfig`
+      - Inicializa `ChatGoogleGenerativeAI` y `GoogleGenerativeAIEmbeddings`
+      - `@property llm`: retorna `ChatGoogleGenerativeAI`
+      - `@property embeddings`: retorna `GoogleGenerativeAIEmbeddings`
+      - Modelo configurable via `config.model_version` (default: `gemini-2.5-flash-lite`)
+    - _Ver `requirements.md`: Req. 8 — LLMFactory (§5,6,7)_
+
+  - [ ] 7.3 Implementar `Summarized`
+    > Implementa `SummarizeEngineInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
+    - Crear `src/infrastructure/llm/summarized.py` implementando `SummarizeEngineInterface`:
+      - Constructor recibe `engine_llm: LLMEngineInterface` y `prompt_template: ChatPromptTemplate`
+      - Extrae `self._llm = engine_llm.llm` y `self._embeddings = engine_llm.embeddings`
+      - Construye chain LCEL: `prompt_template | self._llm | StrOutputParser()`
+      - `summarize(content, max_tokens)`: invoca la chain LCEL
       - `count_tokens(text)`: retorna `self._llm.get_num_tokens(text)`
       - `get_embeddings(text)`: retorna `self._embeddings.embed_query(text)`
+    - Actualizar `src/infrastructure/llm/factory.py` para crear `Summarized(engine_llm, SUMMARIZE_PROMPT)` y retornarlo
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§5,6,7)_
 
 
@@ -260,14 +273,14 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
 
   - [ ] 9.3 Implementar `ReadSummarizeUseCase`
     > Devuelve un resumen del ítem generado por el LLM. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, calcula content_hash, luego busca en caché. Si hay hit (contenido no cambió), retorna caché sin llamar LLM.
-    - Crear `src/application/use_cases/read_summarize.py`:
-      - Constructor recibe `provider`, `cache` y `llm: LLMEngineInterface`
+    - Crear `src/application/services/read_summarize.py`:
+      - Constructor recibe `provider`, `cache` y `summarized: SummarizeEngineInterface`
       - `execute(item_id, provider_name, max_tokens=500)`:
         1. Validar que `max_tokens` esté en el rango [1, 10000]; si no, lanzar `ValidationError` con mensaje descriptivo
         2. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
         3. Buscar en caché con `cache.lookup(item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens)`
         4. Si hay hit: retornar la entrada cacheada
-        5. Si hay miss: llamar `llm.summarize(item.raw_content, max_tokens)` para generar el resumen
+        5. Si hay miss: llamar `summarized.summarize(item.raw_content, max_tokens)` para generar el resumen
         6. Construir `CacheEntry` con el resumen y `metadata={"max_tokens": max_tokens}`, guardar en caché y retornar
     - _Ver `requirements.md`: Req. 4 — read_summarize (§1,2,3,4,5,6,7)_
 
@@ -281,8 +294,9 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
 
   - [ ] 9.5 Implementar `ReadChunksUseCase`
     > Divide el contenido del ítem en fragmentos de máximo 500 tokens, respetando límites de oraciones. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, luego busca en caché por content_hash. El cliente puede pedir todos los chunks o solo algunos por índice.
-    - Crear `src/application/use_cases/read_chunks.py`:
-      - Constructor recibe `provider`, `cache` y `llm`
+    > **Nota:** `ReadChunksUseCase` tiene la misma estructura que `ReadSummarizeUseCase` (`provider, cache, summarized`) pero con lógica distinta: usa `count_tokens()` directamente del engine.
+    - Crear `src/application/services/read_chunks.py`:
+      - Constructor recibe `provider`, `cache` y `summarized: SummarizeEngineInterface`
       - `execute(item_id, provider_name, chunk_indices=None)`:
         1. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
         2. Buscar en caché con `cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")`
