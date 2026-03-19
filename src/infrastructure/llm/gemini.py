@@ -1,7 +1,7 @@
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
 from src.domain.entities import LLMConfig
-from src.domain.interfaces import LLMEngineInterface
+from src.domain.interfaces import LLM, Embeddings, LLMEngineInterface
 
 
 class GeminiLLMEngine(LLMEngineInterface):
@@ -17,9 +17,9 @@ class GeminiLLMEngine(LLMEngineInterface):
         )  # type: ignore[call-arg]
 
     @property
-    def llm(self) -> ChatGoogleGenerativeAI:
+    def llm(self) -> LLM:
         return self._llm
 
     @property
-    def embeddings(self) -> GoogleGenerativeAIEmbeddings:
+    def embeddings(self) -> Embeddings:
         return self._embeddings

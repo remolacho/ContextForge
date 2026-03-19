@@ -47,7 +47,7 @@ graph LR
     end
     subgraph "Domain Layer"
         E["Entities (ContextItem, Chunk, CacheEntry, ProviderConfig, SessionConfig, LLMConfig)"]
-        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface, SummarizeEngineInterface)"]
+        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface, TextProcessingInterface)"]
         EX["Domain Exceptions"]
     end
     subgraph "Infrastructure Layer"
@@ -97,7 +97,7 @@ graph LR
 | **S** - Single Responsibility | Cada caso de uso tiene una única responsabilidad (leer, resumir, fragmentar). Cada controller maneja un único endpoint MCP. |
 | **O** - Open/Closed | `ProviderFactory` y `LLMFactory` permiten agregar implementaciones sin modificar código existente |
 | **L** - Liskov Substitution | `YouTrackProvider` y `JiraProvider` son intercambiables vía `ProviderInterface` |
-| **I** - Interface Segregation | Interfaces separadas para proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`), motor LLM (`LLMEngineInterface`) y summarization (`SummarizeEngineInterface`) |
+| **I** - Interface Segregation | Interfaces genéricas: proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`), motor LLM (`LLMEngineInterface`) y procesamiento de texto (`TextProcessingInterface`). Protocolos `LLM` y `Embeddings` permiten implementar con cualquier motor (Gemini, OpenAI, Grok, etc.) |
 | **D** - Dependency Inversion | Los casos de uso dependen de interfaces, no de implementaciones concretas |
 
 ---
@@ -524,8 +524,19 @@ class CacheEntry:
 
 ```python
 # src/domain/interfaces.py
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import Any, Protocol
 from .entities import ContextItem, ProviderConfig, CacheEntry, Chunk, LLMConfig
+
+# Protocolos genéricos para permitir implementaciones con cualquier LLM (Gemini, OpenAI, Grok, etc.)
+class LLM(Protocol):
+    def get_num_tokens(self, text: str) -> int: ...
+    def invoke(self, input: Any) -> Any: ...
+    def __or__(self, other: Any) -> Any: ...
+
+class Embeddings(Protocol):
+    def embed_query(self, text: str) -> list[float]: ...
 
 class ProviderInterface(ABC):
     @abstractmethod
@@ -538,7 +549,7 @@ class CacheRepositoryInterface(ABC):
     @abstractmethod
     def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None:
         """Busca en caché por item_id + provider_name + content_hash + tool + params adicionales.
-        
+
         IMPORTANTE: El content_hash es requerido para buscar. Se calcula desde el raw_content
         del ContextItem después de obtenerlo del proveedor. Esto permite detectar si el contenido
         cambió (nuevo content_hash = cache miss).
@@ -552,16 +563,20 @@ class CacheRepositoryInterface(ABC):
     def invalidate(self, item_id: str, provider_name: str, tool: str) -> None: ...
 
 class LLMEngineInterface(ABC):
-    @property
-    @abstractmethod
-    def llm(self) -> ChatGoogleGenerativeAI: ...
+    """Interfaz genérica para motores LLM. Expone .llm y .embeddings."""
 
     @property
     @abstractmethod
-    def embeddings(self) -> GoogleGenerativeAIEmbeddings: ...
+    def llm(self) -> LLM: ...
+
+    @property
+    @abstractmethod
+    def embeddings(self) -> Embeddings: ...
 
 
-class SummarizeEngineInterface(ABC):
+class TextProcessingInterface(ABC):
+    """Interfaz genérica para procesamiento de texto con LLM."""
+
     @abstractmethod
     def summarize(self, content: str, max_tokens: int) -> str: ...
 
@@ -634,27 +649,24 @@ provider = factory.create()
 
 ## Infrastructure Layer: LLMFactory
 
-El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. Crea internamente `GeminiLLMEngine` y `Summarized`, retornando este último que implementa `SummarizeEngineInterface`.
+El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. Retorna `GeminiLLMEngine` que implementa `LLMEngineInterface`.
 
 ```python
 # src/infrastructure/llm/factory.py
 from src.domain.entities import LLMConfig
 from src.domain.exceptions import LLMEngineNotRegisteredError
-from src.domain.interfaces import SummarizeEngineInterface
+from src.domain.interfaces import LLMEngineInterface
 from src.infrastructure.llm.gemini import GeminiLLMEngine
-from src.infrastructure.llm.prompts import SUMMARIZE_PROMPT
-from src.infrastructure.llm.summarized import Summarized
 
 
 class LLMFactory:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
-    def create(self) -> SummarizeEngineInterface:
+    def create(self) -> LLMEngineInterface:
         engine_type = self.config.engine_type
         if engine_type == "gemini":
-            engine_llm = GeminiLLMEngine(self.config)
-            return Summarized(engine_llm, SUMMARIZE_PROMPT)
+            return GeminiLLMEngine(self.config)
         raise LLMEngineNotRegisteredError(
             f"Motor LLM '{engine_type}' no reconocido. Disponibles: gemini"
         )
@@ -666,7 +678,7 @@ class LLMFactory:
 # Uso simple - engine_type determina qué motor instanciar
 config = LLMConfig(engine_type="gemini", api_key="xxx")
 factory = LLMFactory(config)
-summarized = factory.create()  # Retorna Summarized (SummarizeEngineInterface)
+engine = factory.create()  # Retorna GeminiLLMEngine (LLMEngineInterface)
 ```
 
 ---
@@ -781,7 +793,7 @@ class ReadFullUseCase:
 ```python
 # src/application/services/read_summarize.py
 from datetime import datetime, timezone
-from src.domain.interfaces import CacheRepositoryInterface, ProviderInterface, SummarizeEngineInterface
+from src.domain.interfaces import CacheRepositoryInterface, ProviderInterface, TextProcessingInterface
 from src.domain.entities import CacheEntry
 from src.domain.exceptions import ValidationError
 from src.infrastructure.builders.cache_entry import CacheEntryBuilder
@@ -792,7 +804,7 @@ class ReadSummarizeUseCase:
         self,
         provider: ProviderInterface,
         cache: CacheRepositoryInterface,
-        summarized: SummarizeEngineInterface,
+        summarized: TextProcessingInterface,
     ) -> None:
         self._provider = provider
         self._cache = cache
@@ -1244,7 +1256,7 @@ class GeminiLLMEngine(LLMEngineInterface):
 
 ## Infrastructure Layer: Summarized
 
-Implementa `SummarizeEngineInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
+Implementa `TextProcessingInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
 
 ```python
 # src/infrastructure/llm/summarized.py
@@ -1252,10 +1264,10 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.domain.exceptions import LLMError
-from src.domain.interfaces import LLMEngineInterface, SummarizeEngineInterface
+from src.domain.interfaces import LLMEngineInterface, TextProcessingInterface
 
 
-class Summarized(SummarizeEngineInterface):
+class Summarized(TextProcessingInterface):
     def __init__(
         self,
         engine_llm: LLMEngineInterface,

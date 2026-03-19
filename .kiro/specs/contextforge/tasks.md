@@ -215,8 +215,8 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§5,6,7)_
 
   - [ ] 7.3 Implementar `Summarized`
-    > Implementa `SummarizeEngineInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
-    - Crear `src/infrastructure/llm/summarized.py` implementando `SummarizeEngineInterface`:
+    > Implementa `TextProcessingInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
+    - Crear `src/infrastructure/llm/summarized.py` implementando `TextProcessingInterface`:
       - Constructor recibe `engine_llm: LLMEngineInterface` y `prompt_template: ChatPromptTemplate`
       - Extrae `self._llm = engine_llm.llm` y `self._embeddings = engine_llm.embeddings`
       - Construye chain LCEL: `prompt_template | self._llm | StrOutputParser()`
@@ -274,7 +274,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
   - [ ] 9.3 Implementar `ReadSummarizeUseCase`
     > Devuelve un resumen del ítem generado por el LLM. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, calcula content_hash, luego busca en caché. Si hay hit (contenido no cambió), retorna caché sin llamar LLM.
     - Crear `src/application/services/read_summarize.py`:
-      - Constructor recibe `provider`, `cache` y `summarized: SummarizeEngineInterface`
+      - Constructor recibe `provider`, `cache` y `summarized: TextProcessingInterface`
       - `execute(item_id, provider_name, max_tokens=500)`:
         1. Validar que `max_tokens` esté en el rango [1, 10000]; si no, lanzar `ValidationError` con mensaje descriptivo
         2. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
@@ -296,7 +296,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     > Divide el contenido del ítem en fragmentos de máximo 500 tokens, respetando límites de oraciones. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, luego busca en caché por content_hash. El cliente puede pedir todos los chunks o solo algunos por índice.
     > **Nota:** `ReadChunksUseCase` tiene la misma estructura que `ReadSummarizeUseCase` (`provider, cache, summarized`) pero con lógica distinta: usa `count_tokens()` directamente del engine.
     - Crear `src/application/services/read_chunks.py`:
-      - Constructor recibe `provider`, `cache` y `summarized: SummarizeEngineInterface`
+      - Constructor recibe `provider`, `cache` y `summarized: TextProcessingInterface`
       - `execute(item_id, provider_name, chunk_indices=None)`:
         1. **PRIMERO:** Llamar `provider.get_item(item_id, provider._config)` para obtener `ContextItem` con content_hash
         2. Buscar en caché con `cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")`

@@ -5,7 +5,7 @@ from src.domain.exceptions import ValidationError
 from src.domain.interfaces import (
     CacheRepositoryInterface,
     ProviderInterface,
-    SummarizeEngineInterface,
+    TextProcessingInterface,
 )
 from src.infrastructure.builders.cache_entry import CacheEntryBuilder
 
@@ -15,7 +15,7 @@ class ReadSummarizeUseCase:
         self,
         provider: ProviderInterface,
         cache: CacheRepositoryInterface,
-        summarized: SummarizeEngineInterface,
+        summarized: TextProcessingInterface,
     ) -> None:
         self._provider = provider
         self._cache = cache
