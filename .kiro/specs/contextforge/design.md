@@ -41,13 +41,13 @@ graph LR
     end
     subgraph "Application Layer"
         SVC["ContextService (Facade)"]
-        UC1["ReadFullUseCase"]
-        UC2["ReadSummarizeUseCase"]
-        UC3["ReadChunksUseCase"]
+        subgraph "services/"
+            RS["ReadSummarizeUseCase"]
+        end
     end
     subgraph "Domain Layer"
         E["Entities (ContextItem, Chunk, CacheEntry, ProviderConfig, SessionConfig, LLMConfig)"]
-        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface)"]
+        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface, SummarizeEngineInterface)"]
         EX["Domain Exceptions"]
     end
     subgraph "Infrastructure Layer"
@@ -65,6 +65,7 @@ graph LR
         end
         CH["ChromaCacheRepository"]
         GE["GeminiLLMEngine"]
+        SUM["Summarized"]
         LF["LLMFactory"]
         CB["ContextItemBuilder"]
         CEB["CacheEntryBuilder"]
@@ -73,20 +74,18 @@ graph LR
     MAIN --> ROUTES
     ROUTES --> CTRL
     CTRL --> SVC
-    SVC --> UC1
-    SVC --> UC2
-    SVC --> UC3
-    UC1 --> P
-    UC2 --> P
-    UC3 --> P
+    SVC --> RS
+    RS --> P
     YT --> P
     GH --> P
     GL --> P
     PDF --> P
     MD --> P
     CH --> P
-    GE --> P
+    GE -.->|".llm, .embeddings"| SUM
+    SUM --> P
     LF --> GE
+    LF --> SUM
     CB --> E
     CEB --> E
 ```
@@ -98,7 +97,7 @@ graph LR
 | **S** - Single Responsibility | Cada caso de uso tiene una única responsabilidad (leer, resumir, fragmentar). Cada controller maneja un único endpoint MCP. |
 | **O** - Open/Closed | `ProviderFactory` y `LLMFactory` permiten agregar implementaciones sin modificar código existente |
 | **L** - Liskov Substitution | `YouTrackProvider` y `JiraProvider` son intercambiables vía `ProviderInterface` |
-| **I** - Interface Segregation | Interfaces separadas para proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`) y motor LLM (`LLMEngineInterface`) |
+| **I** - Interface Segregation | Interfaces separadas para proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`), motor LLM (`LLMEngineInterface`) y summarization (`SummarizeEngineInterface`) |
 | **D** - Dependency Inversion | Los casos de uso dependen de interfaces, no de implementaciones concretas |
 
 ---
@@ -488,6 +487,7 @@ class SessionConfig:
 class LLMConfig:
     engine_type: str   # "gemini", "openai", etc.
     api_key: str
+    model_version: str = "gemini-2.5-flash-lite"  # modelo por defecto
 
 @dataclass
 class ContextItem:
@@ -552,6 +552,16 @@ class CacheRepositoryInterface(ABC):
     def invalidate(self, item_id: str, provider_name: str, tool: str) -> None: ...
 
 class LLMEngineInterface(ABC):
+    @property
+    @abstractmethod
+    def llm(self) -> ChatGoogleGenerativeAI: ...
+
+    @property
+    @abstractmethod
+    def embeddings(self) -> GoogleGenerativeAIEmbeddings: ...
+
+
+class SummarizeEngineInterface(ABC):
     @abstractmethod
     def summarize(self, content: str, max_tokens: int) -> str: ...
 
@@ -624,24 +634,27 @@ provider = factory.create()
 
 ## Infrastructure Layer: LLMFactory
 
-El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. No requiere registro previo.
+El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. Crea internamente `GeminiLLMEngine` y `Summarized`, retornando este último que implementa `SummarizeEngineInterface`.
 
 ```python
 # src/infrastructure/llm/factory.py
 from src.domain.entities import LLMConfig
 from src.domain.exceptions import LLMEngineNotRegisteredError
-from src.domain.interfaces import LLMEngineInterface
+from src.domain.interfaces import SummarizeEngineInterface
 from src.infrastructure.llm.gemini import GeminiLLMEngine
+from src.infrastructure.llm.prompts import SUMMARIZE_PROMPT
+from src.infrastructure.llm.summarized import Summarized
 
 
 class LLMFactory:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
-    def create(self) -> LLMEngineInterface:
+    def create(self) -> SummarizeEngineInterface:
         engine_type = self.config.engine_type
         if engine_type == "gemini":
-            return GeminiLLMEngine(self.config)
+            engine_llm = GeminiLLMEngine(self.config)
+            return Summarized(engine_llm, SUMMARIZE_PROMPT)
         raise LLMEngineNotRegisteredError(
             f"Motor LLM '{engine_type}' no reconocido. Disponibles: gemini"
         )
@@ -653,7 +666,7 @@ class LLMFactory:
 # Uso simple - engine_type determina qué motor instanciar
 config = LLMConfig(engine_type="gemini", api_key="xxx")
 factory = LLMFactory(config)
-engine = factory.create()
+summarized = factory.create()  # Retorna Summarized (SummarizeEngineInterface)
 ```
 
 ---
@@ -766,37 +779,44 @@ class ReadFullUseCase:
 ```
 
 ```python
-# src/application/use_cases/read_summarize.py
+# src/application/services/read_summarize.py
 from datetime import datetime, timezone
-from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
-from ...domain.entities import CacheEntry
-from ...domain.exceptions import ValidationError
-from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+from src.domain.interfaces import CacheRepositoryInterface, ProviderInterface, SummarizeEngineInterface
+from src.domain.entities import CacheEntry
+from src.domain.exceptions import ValidationError
+from src.infrastructure.builders.cache_entry import CacheEntryBuilder
+
 
 class ReadSummarizeUseCase:
-    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+    def __init__(
+        self,
+        provider: ProviderInterface,
+        cache: CacheRepositoryInterface,
+        summarized: SummarizeEngineInterface,
+    ) -> None:
         self._provider = provider
         self._cache = cache
-        self._llm = llm
+        self._summarized = summarized
 
-    def execute(self, item_id: str, provider_name: str, max_tokens: int = 500) -> CacheEntry:
+    def execute(
+        self,
+        item_id: str,
+        provider_name: str,
+        max_tokens: int = 500,
+    ) -> CacheEntry:
         if not (1 <= max_tokens <= 10000):
             raise ValidationError("max_tokens debe estar entre 1 y 10000")
 
-        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
 
-        # 2. Buscar en caché por content_hash + tool + max_tokens
         cached = self._cache.lookup(
             item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens
         )
         if cached:
             return cached
 
-        # 3. CACHE MISS: Generar resumen con LLM
-        summary = self._llm.summarize(item.raw_content, max_tokens)
+        summary = self._summarized.summarize(item.raw_content, max_tokens)
 
-        # 4. Guardar en caché
         entry = (
             CacheEntryBuilder()
             .for_item(item)
@@ -1166,20 +1186,21 @@ Los prompts se definen como constantes reutilizables usando `ChatPromptTemplate.
 # src/infrastructure/llm/prompts.py
 from langchain_core.prompts import ChatPromptTemplate
 
-# Prompt para read_summarize: rol system fija el comportamiento, rol human aporta el contenido dinámico
 SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
     (
         "system",
-        (
-            "Eres un asistente técnico experto en resumir ítems de gestión de proyectos. "
-            "Tu tarea es extraer los puntos más importantes del ítem proporcionado. "
-            "El resumen debe ser conciso, preciso y no superar {max_tokens} tokens. "
-            "Responde únicamente con el resumen, sin encabezados ni explicaciones adicionales."
-        ),
+        """Eres un asistente técnico especializado en resumir contenido de manera concisa y precisa.
+
+Reglas:
+- Máximo {max_tokens} tokens
+- Incluir solo información relevante y verificable
+- Mantener claridad y estructura
+- No inventar ni añadir información no presente en el contenido original
+- Priorizar: problema, contexto, estado actual, puntos clave""",
     ),
     (
         "human",
-        "Resume el siguiente ítem:\n\n{content}",
+        "Contenido a resumir:\n\n{content}",
     ),
 ])
 ```
@@ -1188,47 +1209,75 @@ SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
 
 ## Infrastructure Layer: GeminiLLMEngine
 
-Usa **LCEL** (LangChain Expression Language) con el operador pipe `|` para componer la chain: `prompt | llm | StrOutputParser()`. El `ChatPromptTemplate` con roles `system`/`human` es el patrón recomendado para producción. `get_num_tokens()` usa el tokenizador nativo del modelo vía `langchain_google_genai`.
+Implementa `LLMEngineInterface`, exponiendo `.llm` y `.embeddings` para que `Summarized` los use internamente.
 
 ```python
 # src/infrastructure/llm/gemini.py
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_core.output_parsers import StrOutputParser
-from ...domain.interfaces import LLMEngineInterface
-from ...domain.entities import LLMConfig
-from ...domain.exceptions import LLMError
-from .prompts import SUMMARIZE_PROMPT
+
+from src.domain.entities import LLMConfig
+from src.domain.interfaces import LLMEngineInterface
+
 
 class GeminiLLMEngine(LLMEngineInterface):
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
+        self._config = config
         self._llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model=config.model_version,
             google_api_key=config.api_key,
         )
         self._embeddings = GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004",
             google_api_key=config.api_key,
         )
-        # Chain LCEL: ChatPromptTemplate | LLM | StrOutputParser
-        # StrOutputParser extrae el string del AIMessage automáticamente
-        self._summarize_chain = SUMMARIZE_PROMPT | self._llm | StrOutputParser()
+
+    @property
+    def llm(self) -> ChatGoogleGenerativeAI:
+        return self._llm
+
+    @property
+    def embeddings(self) -> GoogleGenerativeAIEmbeddings:
+        return self._embeddings
+```
+
+---
+
+## Infrastructure Layer: Summarized
+
+Implementa `SummarizeEngineInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
+
+```python
+# src/infrastructure/llm/summarized.py
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
+from src.domain.exceptions import LLMError
+from src.domain.interfaces import LLMEngineInterface, SummarizeEngineInterface
+
+
+class Summarized(SummarizeEngineInterface):
+    def __init__(
+        self,
+        engine_llm: LLMEngineInterface,
+        prompt_template: ChatPromptTemplate,
+    ) -> None:
+        self._llm = engine_llm.llm
+        self._embeddings = engine_llm.embeddings
+        self._chain = prompt_template | self._llm | StrOutputParser()
 
     def summarize(self, content: str, max_tokens: int) -> str:
-        """Genera resumen usando LCEL chain. El prompt usa roles system/human explícitos."""
         try:
-            return self._summarize_chain.invoke({
+            return self._chain.invoke({
                 "content": content,
                 "max_tokens": max_tokens,
             })
         except Exception as e:
-            raise LLMError(f"Error al generar resumen con Gemini: {e}") from e
+            raise LLMError(f"Error al generar resumen: {e}") from e
 
     def count_tokens(self, text: str) -> int:
-        """Cuenta tokens usando el tokenizador nativo del modelo."""
         return self._llm.get_num_tokens(text)
 
     def get_embeddings(self, text: str) -> list[float]:
-        """Genera embeddings para almacenamiento en ChromaDB."""
         return self._embeddings.embed_query(text)
 ```
 

@@ -1,6 +1,12 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from .entities import CacheEntry, ContextItem, ProviderConfig
+
+if TYPE_CHECKING:
+    from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
 
 class ProviderInterface(ABC):
@@ -38,6 +44,16 @@ class CacheRepositoryInterface(ABC):
 
 
 class LLMEngineInterface(ABC):
+    @property
+    @abstractmethod
+    def llm(self) -> "ChatGoogleGenerativeAI": ...
+
+    @property
+    @abstractmethod
+    def embeddings(self) -> "GoogleGenerativeAIEmbeddings": ...
+
+
+class SummarizeEngineInterface(ABC):
     @abstractmethod
     def summarize(self, content: str, max_tokens: int) -> str: ...
 

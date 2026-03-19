@@ -18,6 +18,7 @@ class SessionConfig:
 class LLMConfig:
     engine_type: str
     api_key: str
+    model_version: str = "gemini-2.5-flash-lite"
 
 
 @dataclass
