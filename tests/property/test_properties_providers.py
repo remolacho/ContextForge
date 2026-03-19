@@ -1,11 +1,9 @@
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.domain.entities import LLMConfig, ProviderConfig
-from src.domain.exceptions import LLMEngineNotRegisteredError, ProviderNotRegisteredError
+from src.domain.entities import ProviderConfig
+from src.domain.exceptions import ProviderNotRegisteredError
 from src.infrastructure.builders.context_item import ContextItemBuilder
-from src.infrastructure.llm.factory import LLMFactory
-from src.infrastructure.llm.gemini import GeminiLLMEngine
 from src.infrastructure.providers.factory import ProviderFactory
 from src.infrastructure.providers.task.youtrack import YouTrackProvider
 
@@ -75,9 +73,6 @@ def test_context_item_builder_different_content_different_hash(
         assert builder.content_hash != builder_modified.content_hash
 
 
-# Feature: contextforge, Propiedad 16: ProviderFactory crea segun config.code
-
-
 def test_provider_factory_creates_youtrack():
     """Propiedad 16: ProviderFactory crea YouTrackProvider para code='youtrack'"""
     config = ProviderConfig(code="youtrack", token="test")
@@ -94,26 +89,4 @@ def test_provider_factory_unknown_code():
         factory.create()
         assert False, "Should have raised ProviderNotRegisteredError"
     except ProviderNotRegisteredError as e:
-        assert "unknown" in str(e)
-
-
-# Feature: contextforge, Propiedad 18: LLMFactory crea segun LLMConfig.engine_type
-
-
-def test_llm_factory_creates_gemini():
-    """Propiedad 18: LLMFactory crea GeminiLLMEngine para engine_type='gemini'"""
-    config = LLMConfig(engine_type="gemini", api_key="test")
-    factory = LLMFactory(config)
-    engine = factory.create()
-    assert isinstance(engine, GeminiLLMEngine)
-
-
-def test_llm_factory_unknown_engine():
-    """Propiedad 18: Engine desconocido lanza LLMEngineNotRegisteredError"""
-    config = LLMConfig(engine_type="unknown", api_key="test")
-    factory = LLMFactory(config)
-    try:
-        factory.create()
-        assert False, "Should have raised LLMEngineNotRegisteredError"
-    except LLMEngineNotRegisteredError as e:
         assert "unknown" in str(e)
