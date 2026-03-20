@@ -93,11 +93,23 @@ Desarrollador Senior Python con experiencia en:
 
 | Regla | Descripción |
 |-------|-------------|
+| **Seguir flujo al pie de la letra** | NO improvisar. Leer el workflow `.agents/workflows/*.md` antes de cada paso |
 | Un commit por PR | Squash antes de push |
 | Esperar "next" | Cada paso requiere confirmación |
 | make check | Debe pasar antes de finalizar |
 | ID en commits | Incluir ID de YouTrack |
 | YouTrack | https://communities.youtrack.cloud/agiles/195-1/current |
+
+### Flujo Estricto (NO SKIP)
+
+1. `init` → leer workflow `init_workflow.md`
+2. Fuente tarea → leer workflow `task_source_workflow.md` ANTES de preguntar
+3. Seleccionar tarea → listar opciones, esperar selección
+4. Crear en YouTrack → SOLO cuando usuario selecciona
+5. Preguntar rama → esperar respuesta
+6. Planificación → leer workflow `plan_workflow.md`
+7. Ejecución → leer workflow `execute_workflow.md`
+8. Finalización → leer workflow `finalize_workflow.md`
 
 ## Workflows
 
