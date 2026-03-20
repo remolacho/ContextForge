@@ -455,10 +455,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§5), Req. 12 — Integración agentes AI (§3)_
 
 
-- [ ] 14. Implementar `settings.py` y `main.py`
+- [x] 14. Implementar `settings.py` y `main.py`
   > El punto de entrada de la aplicación. `settings.py` carga y valida las variables de entorno al arrancar. `main.py` crea la app FastAPI, conecta todos los componentes y registra las rutas.
 
-  - [ ] 14.1 Implementar `settings.py`
+  - [x] 14.1 Implementar `settings.py`
     > Usar `pydantic-settings` para cargar variables de entorno con validación automática de tipos. Si falta `LLM_API_KEY`, el servidor no debe arrancar.
     - Crear `settings.py` en la raíz del proyecto:
       - Clase `Settings(BaseSettings)` con campos:
@@ -471,16 +471,18 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Método `get_llm_config()` que retorna `LLMConfig(engine_type=self.LLM_ENGINE, api_key=self.LLM_API_KEY)`
       - Al final del archivo: `settings = Settings()`. Si `LLM_API_KEY` está vacía, loguear el error y llamar `sys.exit(1)`
     - _Ver `requirements.md`: Req. 2 — Config LLM (§1,3,4,5), Req. 11 — Docker (§2,6)_
+    - **Commit:** `df63c18` - MCF-14: implementar settings.py y main.py
 
-  - [ ]* 14.2 Escribir property test para settings
+  - [x]* 14.2 Escribir property test para settings
     > Verifica que el servidor falla al arrancar si faltan variables de entorno requeridas.
     - Archivo: `tests/property/test_properties_validation.py`
     - **Propiedad 15:** Para cualquier combinación de variables de entorno donde `LLM_API_KEY` está ausente o vacía, la inicialización de `Settings` lanza un error (o llama `sys.exit(1)`). Con `LLM_API_KEY` presente, siempre inicializa correctamente.
     - Usar `unittest.mock.patch.dict(os.environ, {...})` para simular variables de entorno
     - Comentario: `# Feature: contextforge, Propiedad 15: Fallo al iniciar con variables de entorno requeridas faltantes`
     - _Valida: Requisito 2.4_
+    - **Commit:** `df63c18` - Tests para validación de settings
 
-  - [ ] 14.3 Implementar `main.py` y `config/routes.py`
+  - [x] 14.3 Implementar `main.py` y `config/routes.py`
     > `main.py` es el punto de entrada que conecta todo. `config/routes.py` monta los controllers en la app FastAPI.
     - Crear `config/routes.py`:
       - Clase `Routes` con constructor `__init__(self, app: FastAPI, **deps)` que guarda `self._app` y `self._deps`
@@ -492,6 +494,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Inicializar: `cache = ChromaCacheRepository(...)`, `llm = LLMFactory.create(...)`, `context_service = ContextService(...)`, `session_manager = SessionManager()`
       - Llamar `Routes(app, context_service=context_service, session_manager=session_manager).register()`
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§1), Req. 2 — Config LLM (§2), Req. 10 — ChromaDB (§3), Req. 11 — Docker (§3)_
+    - **Commit:** `df63c18` - Punto de entrada FastAPI implementado
 
 - [ ] 15. Implementar property tests de caché
   > Tests que verifican el comportamiento del sistema de caché de extremo a extremo: que los datos se guardan y recuperan correctamente, y que la caché se invalida cuando el contenido cambia.
