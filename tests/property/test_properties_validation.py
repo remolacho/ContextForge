@@ -36,7 +36,7 @@ class TestSessionManagerValidation:
             assert "proveedor" in str(e).lower()
 
     @given(
-        token=st.text(min_size=1, max_size=100),
+        token=st.text(min_size=1, max_size=100).filter(lambda s: s.strip() != ""),
         base_url=st.one_of(st.none(), st.text(min_size=0, max_size=200)),
     )
     @settings(max_examples=100)

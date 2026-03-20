@@ -144,15 +144,23 @@ contextforge/
 │   ├── controllers/
 │   │   ├── __init__.py
 │   │   ├── application_controller.py # Base: recibe APIRouter, guarda en self.router
-│   │   ├── mcp_controller.py         # MCPController(ApplicationController): POST+GET /mcp/
+│   │   ├── mcp_controller.py         # MCPController(薄): recibe request, llama handlers, serializa
 │   │   └── health_controller.py      # HealthController(ApplicationController): GET /health
+│   ├── services/
+│   │   └── handlers/                # Lógica de negocio MCP (recibe params, retorna dominio)
+│   │       ├── __init__.py
+│   │       ├── initialize.py        # InitializeHandler
+│   │       ├── tools_list.py        # ToolsListHandler
+│   │       └── tool_call.py         # ToolCallHandler
 │   ├── exceptions/
 │   │   ├── __init__.py
 │   │   └── exception_handler.py      # Handlers globales por tipo de excepción + dict exception_handlers
 │   ├── schemas/
 │   │   ├── __init__.py
 │   │   ├── mcp_request.py            # Pydantic: ToolCallRequest, SessionConfigSchema
-│   │   ├── mcp_response.py           # Pydantic: ToolCallResponse, ChunksResponse, ChunkItem
+│   │   ├── mcp_response.py           # Pydantic: ToolCallResponse, ItemResponse
+│   │   ├── serialize.py              # serialize_response() para serializar dominio a dict
+│   │   ├── tools.py                  # TOOLS_DEFINITION
 │   │   └── errors.py                 # ErrorResponse (para documentar errores en OpenAPI)
 │   └── session.py                    # SessionManager: almacena SessionConfig por sesión
 ├── src/
@@ -244,14 +252,21 @@ La estructura de controllers actualizada en el árbol de directorios:
 app/
 ├── controllers/
 │   ├── application_controller.py    # Base: recibe APIRouter, guarda en self.router
-│   ├── mcp_controller.py            # MCPController(ApplicationController)
+│   ├── mcp_controller.py            # MCPController(薄): orchestration + serialización
 │   └── health_controller.py         # HealthController(ApplicationController)
+├── services/
+│   └── handlers/                    # Lógica de negocio MCP
+│       ├── initialize.py
+│       ├── tools_list.py
+│       └── tool_call.py
 ├── exceptions/
 │   └── exception_handler.py         # Handlers globales por tipo de excepción
 ├── schemas/
 │   ├── mcp_request.py
 │   ├── mcp_response.py
-│   └── errors.py                    # ErrorResponse (para documentar en OpenAPI)
+│   ├── serialize.py                  # Serialización de dominio a dict
+│   ├── tools.py                     # TOOLS_DEFINITION
+│   └── errors.py                    # ErrorResponse
 └── session.py
 ```
 
@@ -322,19 +337,28 @@ class ApplicationController:
 
 ### app/controllers/mcp_controller.py
 
+El controller es **薄** (delgado): solo recibe requests, extrae parámetros, llama handlers y serializa respuestas. No tiene lógica de negocio.
+
 ```python
 # app/controllers/mcp_controller.py
-from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
+from fastapi import status
 from app.controllers.application_controller import ApplicationController
-from app.schemas.mcp_request import ToolCallRequest
-from app.schemas.mcp_response import ToolCallResponse, ChunksResponse
-from app.schemas.errors import ErrorResponse
+from app.schemas import ErrorResponse, ToolCallRequest
+from app.schemas.serialize import serialize_response
+from app.services.handlers.initialize import InitializeHandler
+from app.services.handlers.tool_call import ToolCallHandler
+from app.services.handlers.tools_list import ToolsListHandler
 from app.session import SessionManager
 from src.application.services.context_service import ContextService
 
+
 class MCPController(ApplicationController):
-    def __init__(self, router: APIRouter, context_service: ContextService, session_manager: SessionManager):
+    def __init__(
+        self,
+        router,
+        context_service: ContextService,
+        session_manager: SessionManager,
+    ) -> None:
         super().__init__(router)
         self.router.tags = ["MCP"]
         self._context_service = context_service
@@ -344,30 +368,52 @@ class MCPController(ApplicationController):
             "/",
             status_code=status.HTTP_200_OK,
             responses={
-                400: {"model": ErrorResponse, "description": "Sesión inválida o método desconocido"},
-                422: {"model": ErrorResponse, "description": "Error de dominio (proveedor, ítem, validación)"},
+                400: {"model": ErrorResponse, "description": "Método desconocido"},
+                422: {"model": ErrorResponse, "description": "Error de dominio"},
             },
         )
         async def handle_mcp(request: ToolCallRequest):
-            """Endpoint único Streamable HTTP MCP (POST). Despacha según method."""
             if request.method == "initialize":
-                return _handle_initialize(request, self._session_manager)
-            if request.method == "tools/list":
-                return _handle_tools_list(request)
-            if request.method == "tools/call":
-                return await _handle_tool_call(request, self._context_service, self._session_manager)
-            return JSONResponse(
-                {"message": f"Método '{request.method}' no soportado"},
-                status_code=400,
-            )
+                providers = (
+                    request.params.get("clientInfo", {})
+                    .get("config", {})
+                    .get("providers", {})
+                )
+                InitializeHandler(self._session_manager).execute(
+                    providers_data=providers,
+                    session_id=str(request.id or "default"),
+                )
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.id,
+                    "result": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "serverInfo": {"name": "contextforge", "version": "1.0.0"},
+                    },
+                }
 
-        @self.router.get(
-            "/",
-            status_code=status.HTTP_200_OK,
-        )
+            if request.method == "tools/list":
+                result = ToolsListHandler().execute()
+                return {"jsonrpc": "2.0", "id": None, "result": {"tools": result}}
+
+            if request.method == "tools/call":
+                params = request.params
+                session = self._session_manager.get(str(request.id or "default"))
+                tool_result = ToolCallHandler(
+                    self._context_service, self._session_manager
+                ).execute(
+                    tool_name=params["name"],
+                    arguments=params.get("arguments", {}),
+                    session=session,
+                )
+                return serialize_response(tool_result)
+
+            return {"message": f"Método '{request.method}' no soportado"}
+
+        @self.router.get("/", status_code=status.HTTP_200_OK)
         async def mcp_sse():
-            """Endpoint GET para SSE (Streamable HTTP MCP spec 2025-03-26)."""
-            return JSONResponse({"message": "SSE endpoint activo"})
+            return {"message": "SSE endpoint activo"}
 ```
 
 ### app/exceptions/exception_handler.py
@@ -468,6 +514,169 @@ class ItemResponse(BaseModel):
 class ToolCallResponse(BaseModel):
     items: list[ItemResponse]
 ```
+
+---
+
+## Interface Layer: MCP Handlers
+
+La capa de handlers implementa el patrón **Strategy** para separar la lógica de negocio del controller. Cada método MCP (`initialize`, `tools/list`, `tools/call`) tiene su propio handler con responsabilidad única.
+
+Los handlers **reciben parámetros puros** (dict, str, int) y **retornan objetos de dominio** (SessionConfig, CacheEntry, list[Chunk]). El controller se encarga de la serialización con schemas.
+
+### Flujo de datos
+
+```
+Controller (薄)
+    │
+    ├── if request.method == "initialize":
+    │       handler = InitializeHandler(session_manager)
+    │       handler.execute(providers_data=..., session_id=...)
+    │       → retorna SessionConfig
+    │
+    ├── elif request.method == "tools/list":
+    │       handler = ToolsListHandler()
+    │       handler.execute()
+    │       → retorna list[dict] (TOOLS_DEFINITION)
+    │
+    └── elif request.method == "tools/call":
+            handler = ToolCallHandler(context_service, session_manager)
+            handler.execute(tool_name=..., arguments=..., session=...)
+            → retorna CacheEntry | list[Chunk]
+    
+    │
+    ▼
+Controller serializa con schema → JSON-RPC response
+```
+
+### Estructura de archivos
+
+```
+app/
+├── services/
+│   └── handlers/
+│       ├── initialize.py     # InitializeHandler
+│       ├── tools_list.py    # ToolsListHandler
+│       └── tool_call.py     # ToolCallHandler
+│
+└── schemas/
+    └── serialize.py         # serialize_response()
+```
+
+### InitializeHandler
+
+```python
+# app/services/handlers/initialize.py
+from app.session import SessionManager
+from src.domain.entities import ProviderConfig, SessionConfig
+
+
+class InitializeHandler:
+    def __init__(self, session_manager: SessionManager) -> None:
+        self._session_manager = session_manager
+
+    def execute(self, providers_data: dict, session_id: str) -> SessionConfig:
+        """Recibe providers_data dict, retorna SessionConfig de dominio."""
+        session_config = SessionConfig(
+            providers={
+                name: ProviderConfig(
+                    code=name,
+                    token=data.get("token", ""),
+                    base_url=data.get("base_url"),
+                )
+                for name, data in providers_data.items()
+            }
+        )
+        self._session_manager.store(session_id, session_config)
+        return session_config
+```
+
+### ToolsListHandler
+
+```python
+# app/services/handlers/tools_list.py
+from app.schemas import TOOLS_DEFINITION
+
+
+class ToolsListHandler:
+    def execute(self) -> list[dict]:
+        """Retorna la lista de definiciones de herramientas."""
+        return TOOLS_DEFINITION
+```
+
+### ToolCallHandler
+
+```python
+# app/services/handlers/tool_call.py
+from app.session import SessionManager
+from src.application.services.context_service import ContextService
+from src.domain.entities import CacheEntry, Chunk, SessionConfig
+
+
+class ToolCallHandler:
+    def __init__(
+        self, context_service: ContextService, session_manager: SessionManager
+    ) -> None:
+        self._context_service = context_service
+        self._session_manager = session_manager
+
+    def execute(
+        self,
+        tool_name: str,
+        arguments: dict,
+        session: SessionConfig,
+    ) -> CacheEntry | list[Chunk]:
+        """Ejecuta la tool solicitada y retorna objeto de dominio."""
+        item_id = arguments.get("item_id", "")
+        provider_name = arguments.get("provider_name", "")
+
+        if tool_name == "read_full":
+            return self._context_service.read_full(item_id, provider_name, session)
+
+        if tool_name == "read_summarize":
+            max_tokens = arguments.get("max_tokens", 500)
+            return self._context_service.read_summarize(
+                item_id, provider_name, session, max_tokens
+            )
+
+        if tool_name == "read_chunks":
+            chunk_indices = arguments.get("chunk_indices")
+            return self._context_service.read_chunks(
+                item_id, provider_name, session, chunk_indices
+            )
+
+        raise ValueError(f"Herramienta '{tool_name}' no soportada")
+```
+
+### Serialización
+
+```python
+# app/schemas/serialize.py
+from app.schemas.mcp_response import ItemResponse, ToolCallResponse
+from src.domain.entities import CacheEntry, Chunk
+
+
+def serialize_response(result: CacheEntry | list[Chunk]) -> dict:
+    """Serializa objetos de dominio a dict JSON-RPC compatible."""
+    if isinstance(result, CacheEntry):
+        return ToolCallResponse(
+            items=[ItemResponse(index=1, content=result.content)]
+        ).model_dump()
+
+    chunks: list[Chunk] = result
+    return ToolCallResponse(
+        items=[
+            ItemResponse(index=c.chunk_index, content=c.content) for c in chunks
+        ]
+    ).model_dump()
+```
+
+### Responsabilidades por componente
+
+| Componente | Responsabilidad | NO debe hacer |
+|------------|-----------------|--------------|
+| `MCPController` | Recibir request, extraer params, llamar handler, serializar | Lógica de negocio |
+| `Handler.execute()` | Lógica de negocio, retornar objeto de dominio | Serializar a JSON |
+| `serialize_response()` | Convertir objeto de dominio a dict | Lógica de negocio |
 
 ---
 
