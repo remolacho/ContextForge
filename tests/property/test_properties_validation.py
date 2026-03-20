@@ -5,7 +5,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from app.session import SessionManager
-from src.domain.entities import ProviderConfig, SessionConfig
+from settings import Settings
+from src.domain.entities import LLMConfig, ProviderConfig, SessionConfig
 from src.domain.exceptions import SessionConfigError
 
 
@@ -61,3 +62,30 @@ class TestSessionManagerValidation:
         manager = SessionManager()
         manager.delete("nonexistent")
         assert "nonexistent" not in manager._sessions
+
+
+class TestSettingsValidation:
+    @given(api_key=st.one_of(st.just(""), st.just("  "), st.just("\n\t")))
+    @settings(max_examples=50)
+    def test_empty_llm_api_key_raises_error(self, api_key: str) -> None:
+        settings = Settings(llm_api_key=api_key)
+        try:
+            settings.get_llm_config()
+            assert False, "Expected ValueError"
+        except ValueError as e:
+            assert "LLM_API_KEY" in str(e)
+
+    def test_valid_llm_config_returned(self) -> None:
+        settings = Settings(llm_api_key="test-key-123")
+        config = settings.get_llm_config()
+        assert isinstance(config, LLMConfig)
+        assert config.api_key == "test-key-123"
+        assert config.engine_type == "gemini"
+
+    def test_default_values(self) -> None:
+        settings = Settings(llm_api_key="valid-key")
+        assert settings.llm_engine == "gemini"
+        assert settings.llm_model_version == "gemini-2.5-flash-lite"
+        assert settings.chroma_host == "chromadb"
+        assert settings.chroma_port == 8000
+        assert settings.mcp_port == 3000
