@@ -18,6 +18,11 @@
    - **Project:** ContextForge
    - **Sprint:** https://communities.youtrack.cloud/agiles/195-1/current
    - Usar herramienta `youtrack_create_issue`
+   - **IMPORTANTE:** Respetar TODO el contenido de la tarea seleccionada en tasks.md
+     - Mantener la descripción completa (Goals, Discoveries, etc.)
+     - Mantener la estructura y formato original
+     - Incluir TODOS los detalles, archivos, directorios mencionados
+     - Preservar listas de tareas, referencias y links
 
 5. **Crear rama**
    - Formato: `hotfix/MCF-XXX-descripcion` o `feature/MCF-XXX-descripcion`
