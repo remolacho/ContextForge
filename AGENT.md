@@ -2,11 +2,10 @@
 
 ## Inicialización
 
-Al iniciar con `init`:
-1. Leer `.agents/prompts/role.md` y mostrar rol
-2. Listar skills disponibles en `skills/`
-3. Mostrar workflows disponibles
-4. Solicitar fuente de tarea
+Al iniciar con `start`:
+1. Verificar sesión activa en `.context/session_*.md`
+2. Si existe → preguntar retomar o nueva
+3. Si no existe → solicitar fuente de tarea y crear sesión
 
 ## Rol
 
@@ -30,63 +29,86 @@ Desarrollador Senior Python con experiencia en:
 | `cache.md` | ChromaCacheRepository |
 | `llm.md` | GeminiLLMEngine, Summarized |
 
+## Sistema de Sesiones
+
+### Archivo de sesión
+
+Los archivos de sesión se crean en `.context/` con el formato:
+```
+session_YYYYMMDD_HHMMSS.md
+```
+
+### Flujo de `start`
+
+```
+1. Buscar session_*.md en .context/
+   │
+   ├── Existe sesión activa
+   │       ↓
+   │   Mostrar resumen de sesión
+   │   Preguntar: "¿Retomar o nueva?"
+   │       ├── "retomar" → Leer session, retomar flujo
+   │       └── "nueva" → Eliminar, crear nueva
+   │
+   └── No existe sesión
+           ↓
+       Solicitar fuente de tarea
+           ↓
+       Crear session_YYYYMMDD_HHMMSS.md
+           ↓
+       Iniciar flujo INIT
+```
+
+### Validación de flujos
+
+```
+Al iniciar PLAN     → Verificar INIT completado
+Al iniciar EXECUTE → Verificar PLAN completado  
+Al iniciar FINALIZE → Verificar EXECUTE completado
+
+Si flujo anterior no completado:
+→ Error: "Completa {FLUJO_ANTERIOR} primero"
+```
+
 ## Flujo de Trabajo
 
 ```
-┌─────────────┐
-│    INIT     │ ← Comando inicial
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────┐
-│ Solicitar Fuente Tarea  │
-│ (archivo / URL YouTrack)│
-└───────────┬─────────────┘
-            │
-    ┌───────┴───────┐
-    ▼               ▼
-┌─────────┐  ┌─────────────┐
-│ Archivo │  │ URL YouTrack│
-└────┬────┘  └──────┬──────┘
-     │               │
-     ▼               ▼
-┌─────────────────────────┐
-│ Crear tarea en YouTrack │
-│ (una sola tarea)        │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Solicitar tipo rama     │
-│ hotfix → main           │
-│ feature → development   │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│    PLANIFICACIÓN        │ ← plan_workflow.md
-│ - Extraer contexto      │
-│ - Mostrar pasos         │
-│ - Esperar "next"        │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│      EJECUCIÓN          │ ← execute_workflow.md
-│ - Paso a paso           │
-│ - make check por paso   │
-│ - Esperar "next"        │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│     FINALIZACIÓN        │ ← finalize_workflow.md
-│ - Commit (squash)      │
-│ - Push                  │
-│ - Crear PR              │
-│ - Actualizar YouTrack   │
-│ - ¿Merge?               │
-└─────────────────────────┘
+┌───────────────────────────────────────┐
+│                  START                  │
+│        Buscar/Crear sesión             │
+└───────────────────┬───────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────────────┐
+│                 INIT                   │
+│        init_workflow.md               │
+└───────────────────┬───────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────────────┐
+│             TASK_SOURCE               │
+│       task_source_workflow.md         │
+└───────────────────┬───────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────────────┐
+│               PLAN                    │
+│        plan_workflow.md               │
+└───────────────────┬───────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────────────┐
+│              EXECUTE                  │
+│       execute_workflow.md             │
+│   Esperar "next" ANTES de cada paso   │
+└───────────────────┬───────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────────────┐
+│             FINALIZE                  │
+│       finalize_workflow.md            │
+│   Confirmación antes de cada paso     │
+└───────────────────────────────────────┘
 ```
 
 ## Reglas
@@ -94,6 +116,8 @@ Desarrollador Senior Python con experiencia en:
 | Regla | Descripción |
 |-------|-------------|
 | **Seguir flujo al pie de la letra** | NO improvisar. Leer el workflow `.agents/workflows/*.md` antes de cada paso |
+| **Sesión activa** | Crear y actualizar `.context/session_*.md` en cada flujo |
+| **Validación de flujos** | No iniciar flujo si el anterior no está completo |
 | Un commit por PR | Squash antes de push |
 | Esperar "next" | Cada paso requiere confirmación |
 | make check | Debe pasar antes de finalizar |
@@ -102,14 +126,36 @@ Desarrollador Senior Python con experiencia en:
 
 ### Flujo Estricto (NO SKIP)
 
-1. `init` → leer workflow `init_workflow.md`
-2. Fuente tarea → leer workflow `task_source_workflow.md` ANTES de preguntar
-3. Seleccionar tarea → listar TODAS las tareas con número, luego preguntar "¿Qué número de tarea deseas tomar?" con opciones [1-16] (NO predefinir respuestas)
-4. Crear en YouTrack → SOLO cuando usuario selecciona
-5. Preguntar rama → esperar respuesta
-6. Planificación → leer workflow `plan_workflow.md`
-7. Ejecución → leer workflow `execute_workflow.md`
-8. Finalización → leer workflow `finalize_workflow.md`
+| Paso | Acción | Workflow |
+|------|--------|----------|
+| 1 | `start` → Buscar/Crear sesión | ← Lógica de sesión |
+| 2 | INIT → Mostrar rol, skills, workflows | `init_workflow.md` |
+| 3 | TASK_SOURCE → Solicitar fuente | `task_source_workflow.md` |
+| 4 | PLAN → Leer `plan_workflow.md` → Esperar "next" | `plan_workflow.md` |
+| 5 | EXECUTE → Leer `execute_workflow.md` → Esperar "next" **antes de cada paso** | `execute_workflow.md` |
+| 6 | FINALIZE → Leer `finalize_workflow.md` → Confirmar **antes de cada paso** | `finalize_workflow.md` |
+
+### Reglas de Espera
+
+| Situación | Acción Requerida |
+|-----------|-----------------|
+| Sesión activa al iniciar | Esperar "retomar" o "nueva" |
+| Pregunta de fuente | Esperar respuesta del usuario |
+| Solicitar ruta archivo | Esperar respuesta, verificar, si no existe pedir otra |
+| Listar tareas | Mostrar lista completa, **luego esperar número** |
+| Solicitar tipo rama | Esperar respuesta |
+| Plan completado | Esperar "next" |
+| Antes de cada paso ejecución | Esperar "next" |
+| Finalización (commit/push/PR) | Esperar confirmación (si/no) |
+
+### NO hacer NUNCA
+
+- NO leer archivos automáticamente sin que el usuario lo solicite
+- NO listar opciones predefinidas que omitan espera de input real
+- NO continuar al siguiente paso sin esperar confirmación explícita
+- NO inventar rutas de archivos; esperar que el usuario proporcione la ruta real
+- NO continuar si la ruta de archivo no existe
+- NO iniciar flujo si el anterior no está completo
 
 ## Workflows
 
@@ -123,10 +169,11 @@ Desarrollador Senior Python con experiencia en:
 
 - `.agents/templates/plan_template.md` — Plan de implementación
 - `.agents/templates/pr_template.md` — Pull Request
+- `.agents/templates/session-template.md` — Sesión activa
 
 ## Comandos
 
 | Comando | Acción |
 |---------|--------|
-| `init` | Iniciar flujo de desarrollo |
+| `start` | Iniciar o retomar sesión de desarrollo |
 | `next` | Continuar al siguiente paso |

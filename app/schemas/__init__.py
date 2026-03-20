@@ -8,6 +8,7 @@ from .mcp_request import (
     ToolCallRequest,
 )
 from .mcp_response import ItemResponse, ToolCallResponse
+from .tools import TOOLS_DEFINITION
 
 __all__ = [
     "ProviderConfigSchema",
@@ -19,4 +20,5 @@ __all__ = [
     "ItemResponse",
     "ToolCallResponse",
     "ErrorResponse",
+    "TOOLS_DEFINITION",
 ]
