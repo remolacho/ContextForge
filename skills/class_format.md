@@ -15,6 +15,8 @@ Define el estándar para estructurar clases en ContextForge.
 | 3 | Públicos **primero**, privados **después** |
 | 4 | Privados en **orden de ejecución**, no alfabético |
 | 5 | Docstrings de **≤10 palabras** |
+| 6 | NO **ifs anidados** ni complejidad alta |
+| 7 | Bloques `for`/`if` complejos se extraen a **métodos privados** |
 
 ## Estructura
 
