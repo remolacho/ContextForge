@@ -41,13 +41,15 @@ graph LR
     end
     subgraph "Application Layer"
         SVC["ContextService (Facade)"]
-        UC1["ReadFullUseCase"]
-        UC2["ReadSummarizeUseCase"]
-        UC3["ReadChunksUseCase"]
+        subgraph "services/use_cases/"
+            RF["ReadFullUseCase"]
+            RS["ReadSummarizeUseCase"]
+            RC["ReadChunksUseCase"]
+        end
     end
     subgraph "Domain Layer"
         E["Entities (ContextItem, Chunk, CacheEntry, ProviderConfig, SessionConfig, LLMConfig)"]
-        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface)"]
+        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface, TextProcessingInterface)"]
         EX["Domain Exceptions"]
     end
     subgraph "Infrastructure Layer"
@@ -65,6 +67,7 @@ graph LR
         end
         CH["ChromaCacheRepository"]
         GE["GeminiLLMEngine"]
+        SUM["Summarized"]
         LF["LLMFactory"]
         CB["ContextItemBuilder"]
         CEB["CacheEntryBuilder"]
@@ -73,20 +76,22 @@ graph LR
     MAIN --> ROUTES
     ROUTES --> CTRL
     CTRL --> SVC
-    SVC --> UC1
-    SVC --> UC2
-    SVC --> UC3
-    UC1 --> P
-    UC2 --> P
-    UC3 --> P
+    SVC --> RF
+    SVC --> RS
+    SVC --> RC
+    RF --> P
+    RS --> P
+    RC --> P
     YT --> P
     GH --> P
     GL --> P
     PDF --> P
     MD --> P
     CH --> P
-    GE --> P
+    GE -.->|".llm, .embeddings"| SUM
+    SUM --> P
     LF --> GE
+    LF --> SUM
     CB --> E
     CEB --> E
 ```
@@ -98,7 +103,7 @@ graph LR
 | **S** - Single Responsibility | Cada caso de uso tiene una única responsabilidad (leer, resumir, fragmentar). Cada controller maneja un único endpoint MCP. |
 | **O** - Open/Closed | `ProviderFactory` y `LLMFactory` permiten agregar implementaciones sin modificar código existente |
 | **L** - Liskov Substitution | `YouTrackProvider` y `JiraProvider` son intercambiables vía `ProviderInterface` |
-| **I** - Interface Segregation | Interfaces separadas para proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`) y motor LLM (`LLMEngineInterface`) |
+| **I** - Interface Segregation | Interfaces genéricas: proveedor (`ProviderInterface`), caché (`CacheRepositoryInterface`), motor LLM (`LLMEngineInterface`) y procesamiento de texto (`TextProcessingInterface`). Protocolos `LLM` y `Embeddings` permiten implementar con cualquier motor (Gemini, OpenAI, Grok, etc.) |
 | **D** - Dependency Inversion | Los casos de uso dependen de interfaces, no de implementaciones concretas |
 
 ---
@@ -158,14 +163,14 @@ contextforge/
 │   │   └── exceptions.py            # Jerarquía completa de excepciones
 │   ├── application/
 │   │   ├── __init__.py
-│   │   ├── use_cases/
-│   │   │   ├── __init__.py
-│   │   │   ├── read_full.py         # ReadFullUseCase
-│   │   │   ├── read_summarize.py    # ReadSummarizeUseCase
-│   │   │   └── read_chunks.py       # ReadChunksUseCase
 │   │   └── services/
 │   │       ├── __init__.py
-│   │       └── context_service.py   # ContextService (Facade)
+│   │       ├── context_service.py   # ContextService (Facade)
+│   │       └── use_cases/
+│   │           ├── __init__.py
+│   │           ├── read_full.py     # ReadFullUseCase
+│   │           ├── read_summarize.py # ReadSummarizeUseCase
+│   │           └── read_chunks.py   # ReadChunksUseCase
 │   └── infrastructure/
 │       ├── providers/
 │       │   ├── __init__.py          # Registro de todos los proveedores en ProviderFactory
@@ -185,9 +190,20 @@ contextforge/
 │       ├── llm/
 │       │   ├── __init__.py          # Registro en LLMFactory
 │       │   ├── factory.py           # LLMFactory
-│       │   ├── prompts.py           # ChatPromptTemplate con roles system/human (LCEL)
 │       │   ├── gemini.py            # GeminiLLMEngine (LCEL chain: prompt | llm | StrOutputParser)
 │       │   └── openai.py            # OpenAILLMEngine (stub)
+│       ├── templates_prompts/
+│       │   ├── __init__.py
+│       │   ├── summarize.py          # SUMMARIZE_PROMPT
+│       │   ├── summarize_map.py      # SUMMARIZE_MAP_PROMPT
+│       │   └── summarize_reduce.py   # SUMMARIZE_REDUCE_PROMPT
+│       ├── tools/
+│       │   ├── __init__.py
+│       │   ├── tokenizer.py          # TiktokenTokenizer
+│       │   └── summarizer/
+│       │       ├── __init__.py
+│       │       ├── summarize.py      # Summarized (TextProcessingInterface)
+│       │       └── summarizer_engine.py # Summarizer (map-reduce)
 │       ├── cache/
 │       │   ├── __init__.py
 │       │   └── chroma.py            # ChromaCacheRepository
@@ -199,17 +215,12 @@ contextforge/
 ├── tests/
 │   ├── unit/
 │   │   ├── test_read_full_usecase.py
-│   │   ├── test_read_summarize_usecase.py
-│   │   ├── test_read_chunks_usecase.py
-│   │   ├── test_youtrack_provider.py
-│   │   ├── test_provider_factory.py
-│   │   ├── test_llm_factory.py
+│   │   ├── test_tokenizer.py
 │   │   ├── test_chroma_cache.py
-│   │   └── test_context_service.py
+│   │   └── ...
 │   ├── property/
-│   │   ├── test_properties_cache.py
+│   │   ├── test_llm_engine.py
 │   │   ├── test_properties_chunks.py
-│   │   ├── test_properties_validation.py
 │   │   └── test_properties_providers.py
 │   └── integration/
 │       └── test_mcp_http.py
@@ -488,6 +499,7 @@ class SessionConfig:
 class LLMConfig:
     engine_type: str   # "gemini", "openai", etc.
     api_key: str
+    model_version: str = "gemini-2.5-flash-lite"  # modelo por defecto
 
 @dataclass
 class ContextItem:
@@ -524,8 +536,19 @@ class CacheEntry:
 
 ```python
 # src/domain/interfaces.py
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import Any, Protocol
 from .entities import ContextItem, ProviderConfig, CacheEntry, Chunk, LLMConfig
+
+# Protocolos genéricos para permitir implementaciones con cualquier LLM (Gemini, OpenAI, Grok, etc.)
+class LLM(Protocol):
+    def get_num_tokens(self, text: str) -> int: ...
+    def invoke(self, input: Any) -> Any: ...
+    def __or__(self, other: Any) -> Any: ...
+
+class Embeddings(Protocol):
+    def embed_query(self, text: str) -> list[float]: ...
 
 class ProviderInterface(ABC):
     @abstractmethod
@@ -538,7 +561,7 @@ class CacheRepositoryInterface(ABC):
     @abstractmethod
     def lookup(self, item_id: str, provider_name: str, content_hash: str, tool: str, **kwargs) -> CacheEntry | None:
         """Busca en caché por item_id + provider_name + content_hash + tool + params adicionales.
-        
+
         IMPORTANTE: El content_hash es requerido para buscar. Se calcula desde el raw_content
         del ContextItem después de obtenerlo del proveedor. Esto permite detectar si el contenido
         cambió (nuevo content_hash = cache miss).
@@ -552,6 +575,27 @@ class CacheRepositoryInterface(ABC):
     def invalidate(self, item_id: str, provider_name: str, tool: str) -> None: ...
 
 class LLMEngineInterface(ABC):
+    """Interfaz genérica para motores LLM. Expone .llm y .embeddings."""
+
+    @property
+    @abstractmethod
+    def llm(self) -> LLM: ...
+
+    @property
+    @abstractmethod
+    def embeddings(self) -> Embeddings: ...
+
+
+class TokenizerInterface(ABC):
+    """Interfaz para conteo de tokens usando tiktoken."""
+
+    @abstractmethod
+    def count_tokens(self, text: str) -> int: ...
+
+
+class TextProcessingInterface(ABC):
+    """Interfaz genérica para procesamiento de texto con LLM."""
+
     @abstractmethod
     def summarize(self, content: str, max_tokens: int) -> str: ...
 
@@ -624,7 +668,7 @@ provider = factory.create()
 
 ## Infrastructure Layer: LLMFactory
 
-El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. No requiere registro previo.
+El `LLMFactory` es un factory simple que instancia el motor correcto según `engine_type` de `LLMConfig`. Retorna `GeminiLLMEngine` que implementa `LLMEngineInterface`.
 
 ```python
 # src/infrastructure/llm/factory.py
@@ -653,7 +697,7 @@ class LLMFactory:
 # Uso simple - engine_type determina qué motor instanciar
 config = LLMConfig(engine_type="gemini", api_key="xxx")
 factory = LLMFactory(config)
-engine = factory.create()
+engine = factory.create()  # Retorna GeminiLLMEngine (LLMEngineInterface)
 ```
 
 ---
@@ -665,9 +709,9 @@ engine = factory.create()
 from ...domain.interfaces import CacheRepositoryInterface, LLMEngineInterface
 from ...domain.entities import SessionConfig, CacheEntry, Chunk
 from ...domain.exceptions import SessionConfigError
-from ..use_cases.read_full import ReadFullUseCase
-from ..use_cases.read_summarize import ReadSummarizeUseCase
-from ..use_cases.read_chunks import ReadChunksUseCase
+from .use_cases.read_full import ReadFullUseCase
+from .use_cases.read_summarize import ReadSummarizeUseCase
+from .use_cases.read_chunks import ReadChunksUseCase
 from ...infrastructure.providers.factory import ProviderFactory
 from ...infrastructure.llm.factory import LLMFactory
 
@@ -732,7 +776,7 @@ Los casos de uso contienen la **lógica de negocio real**: validación de parám
 > **Flujo híbrido:** Primero ir al proveedor para obtener contenido fresco y calcular content_hash. Luego buscar en caché por content_hash + tool + params. Si hay hit, retornar caché. Si hay miss, ejecutar el tool (summarize/chunks), guardar en caché y retornar. Esto garantiza datos actualizados mientras optimiza llamadas al LLM cuando el contenido no cambió.
 
 ```python
-# src/application/use_cases/read_full.py
+# src/application/services/use_cases/read_full.py
 from datetime import datetime, timezone
 from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface
 from ...domain.entities import CacheEntry
@@ -766,37 +810,44 @@ class ReadFullUseCase:
 ```
 
 ```python
-# src/application/use_cases/read_summarize.py
+# src/application/services/use_cases/read_summarize.py
 from datetime import datetime, timezone
-from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
-from ...domain.entities import CacheEntry
-from ...domain.exceptions import ValidationError
-from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+from src.domain.interfaces import CacheRepositoryInterface, ProviderInterface, TextProcessingInterface
+from src.domain.entities import CacheEntry
+from src.domain.exceptions import ValidationError
+from src.infrastructure.builders.cache_entry import CacheEntryBuilder
+
 
 class ReadSummarizeUseCase:
-    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+    def __init__(
+        self,
+        provider: ProviderInterface,
+        cache: CacheRepositoryInterface,
+        summarized: TextProcessingInterface,
+    ) -> None:
         self._provider = provider
         self._cache = cache
-        self._llm = llm
+        self._summarized = summarized
 
-    def execute(self, item_id: str, provider_name: str, max_tokens: int = 500) -> CacheEntry:
+    def execute(
+        self,
+        item_id: str,
+        provider_name: str,
+        max_tokens: int = 500,
+    ) -> CacheEntry:
         if not (1 <= max_tokens <= 10000):
             raise ValidationError("max_tokens debe estar entre 1 y 10000")
 
-        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
         item = self._provider.get_item(item_id, self._provider._config)
 
-        # 2. Buscar en caché por content_hash + tool + max_tokens
         cached = self._cache.lookup(
             item_id, provider_name, item.content_hash, "read_summarize", max_tokens=max_tokens
         )
         if cached:
             return cached
 
-        # 3. CACHE MISS: Generar resumen con LLM
-        summary = self._llm.summarize(item.raw_content, max_tokens)
+        summary = self._summarized.summarize(item.raw_content, max_tokens)
 
-        # 4. Guardar en caché
         entry = (
             CacheEntryBuilder()
             .for_item(item)
@@ -810,102 +861,95 @@ class ReadSummarizeUseCase:
 ```
 
 ```python
-# src/application/use_cases/read_chunks.py
-from datetime import datetime, timezone
-from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
-from ...domain.entities import Chunk, CacheEntry
-from ...domain.exceptions import ValidationError
-from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+# src/application/services/use_cases/read_chunks.py
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from src.domain.entities import CacheEntry, Chunk
+from src.domain.exceptions import ValidationError
+from src.domain.interfaces import (
+    CacheRepositoryInterface,
+    ProviderInterface,
+    TokenizerInterface,
+)
+from src.infrastructure.builders.cache_entry import CacheEntryBuilder
 
 MAX_CHUNK_TOKENS = 500
 
+
 class ReadChunksUseCase:
-    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+    """Divide texto en chunks usando RecursiveCharacterTextSplitter y los guarda en caché."""
+
+    def __init__(
+        self,
+        provider: ProviderInterface,
+        cache: CacheRepositoryInterface,
+        tokenizer: TokenizerInterface,
+    ) -> None:
         self._provider = provider
         self._cache = cache
-        self._llm = llm
+        self._tokenizer = tokenizer
+        self._splitter = RecursiveCharacterTextSplitter(
+            chunk_size=MAX_CHUNK_TOKENS,
+            length_function=tokenizer.count_tokens,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
 
-    def execute(self, item_id: str, provider_name: str, chunk_indices: list[int] | None = None) -> list[Chunk]:
-        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
+    def execute(
+        self,
+        item_id: str,
+        provider_name: str,
+        chunk_indices: list[int] | None = None,
+    ) -> list[Chunk]:
         item = self._provider.get_item(item_id, self._provider._config)
-
-        # 2. Buscar en caché por content_hash + tool
-        cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")
-        if cached:
-            chunks = self._deserialize_chunks(cached)
-        else:
-            # 3. CACHE MISS: Dividir en chunks
-            chunks = self._split_into_chunks(item.raw_content)
-
-            # 4. Guardar cada chunk en caché
-            for chunk in chunks:
-                entry = (
-                    CacheEntryBuilder()
-                    .for_item(item)
-                    .with_tool("read_chunks")
-                    .with_content(chunk.content)
-                    .with_metadata(
-                        chunk_index=chunk.chunk_index,
-                        total_chunks=chunk.total_chunks,
-                        timestamp=datetime.now(timezone.utc).isoformat(),
-                    )
-                    .build()
-                )
-                self._cache.store(entry)
-
-        # 5. Filtrar por índices si se solicitaron
-        return self._filter_by_indices(chunks, chunk_indices)
-
-    def _split_into_chunks(self, content: str) -> list[Chunk]:
-        """Divide el contenido respetando límites de oración; cada chunk <= 500 tokens."""
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+', content)
-        chunks: list[Chunk] = []
-        current_sentences: list[str] = []
-        current_tokens = 0
-
-        for sentence in sentences:
-            sentence_tokens = self._llm.count_tokens(sentence)
-            if current_tokens + sentence_tokens > MAX_CHUNK_TOKENS and current_sentences:
-                chunk_text = " ".join(current_sentences)
-                chunks.append(Chunk(
-                    chunk_index=len(chunks) + 1,
-                    total_chunks=0,  # se actualiza al final
-                    content=chunk_text,
-                    token_count=current_tokens,
-                ))
-                current_sentences = [sentence]
-                current_tokens = sentence_tokens
-            else:
-                current_sentences.append(sentence)
-                current_tokens += sentence_tokens
-
-        if current_sentences:
-            chunk_text = " ".join(current_sentences)
-            chunks.append(Chunk(
-                chunk_index=len(chunks) + 1,
-                total_chunks=0,
-                content=chunk_text,
-                token_count=current_tokens,
-            ))
-
-        total = len(chunks)
-        for chunk in chunks:
-            chunk.total_chunks = total
+        chunks = self._get_or_generate_chunks(item, provider_name)
+        if chunk_indices is not None:
+            return self._filter_by_indices(chunks, chunk_indices)
         return chunks
 
+    def _get_or_generate_chunks(self, item, provider_name: str) -> list[Chunk]:
+        cached = self._cache.lookup(item.item_id, provider_name, item.content_hash, "read_chunks")
+        if cached:
+            return self._deserialize_chunks(cached)
+        return self._create_and_cache_chunks(item, provider_name)
+
+    def _create_and_cache_chunks(self, item, provider_name: str) -> list[Chunk]:
+        texts = self._splitter.split_text(item.raw_content)
+        chunks = [
+            Chunk(
+                chunk_index=i + 1,
+                total_chunks=len(texts),
+                content=text,
+                token_count=self._tokenizer.count_tokens(text),
+            )
+            for i, text in enumerate(texts)
+        ]
+        for chunk in chunks:
+            self._store_chunk(item, chunk)
+        return chunks
+
+    def _store_chunk(self, item, chunk: Chunk) -> None:
+        entry = (
+            CacheEntryBuilder()
+            .for_item(item)
+            .with_tool("read_chunks")
+            .with_content(chunk.content)
+            .with_metadata(chunk_index=chunk.chunk_index, total_chunks=chunk.total_chunks)
+            .build()
+        )
+        self._cache.store(entry)
+
     def _deserialize_chunks(self, cached: CacheEntry) -> list[Chunk]:
-        # En implementación real, recuperar todos los chunks de ChromaDB por item_id+hash
         return []
 
-    def _filter_by_indices(self, chunks: list[Chunk], indices: list[int] | None) -> list[Chunk]:
-        if not indices:
-            return chunks
+    def _filter_by_indices(self, chunks: list[Chunk], indices: list[int]) -> list[Chunk]:
+        self._validate_indices(chunks, indices)
+        return [c for c in chunks if c.chunk_index in indices]
+
+    def _validate_indices(self, chunks: list[Chunk], indices: list[int]) -> None:
         total = len(chunks)
         for idx in indices:
             if not (1 <= idx <= total):
                 raise ValidationError(f"chunk_index {idx} inválido. Índices válidos: 1 a {total}")
-        return [c for c in chunks if c.chunk_index in indices]
 ```
 
 ---
@@ -1158,28 +1202,29 @@ def _build_doc_id(entry: CacheEntry) -> str:
 
 ---
 
-## Infrastructure Layer: Prompts LangChain
+## Infrastructure Layer: Templates Prompts
 
 Los prompts se definen como constantes reutilizables usando `ChatPromptTemplate.from_messages()` con roles explícitos `system`/`human` (patrón LCEL moderno). Esto garantiza separación de responsabilidades, validación de variables en tiempo de construcción y compatibilidad con cualquier modelo de chat.
 
 ```python
-# src/infrastructure/llm/prompts.py
+# src/infrastructure/templates_prompts/summarize.py
 from langchain_core.prompts import ChatPromptTemplate
 
-# Prompt para read_summarize: rol system fija el comportamiento, rol human aporta el contenido dinámico
 SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
     (
         "system",
-        (
-            "Eres un asistente técnico experto en resumir ítems de gestión de proyectos. "
-            "Tu tarea es extraer los puntos más importantes del ítem proporcionado. "
-            "El resumen debe ser conciso, preciso y no superar {max_tokens} tokens. "
-            "Responde únicamente con el resumen, sin encabezados ni explicaciones adicionales."
-        ),
+        """Eres un asistente técnico especializado en resumir contenido de manera concisa y precisa.
+
+Reglas:
+- Máximo {max_tokens} tokens
+- Incluir solo información relevante y verificable
+- Mantener claridad y estructura
+- No inventar ni añadir información no presente en el contenido original
+- Priorizar: problema, contexto, estado actual, puntos clave""",
     ),
     (
         "human",
-        "Resume el siguiente ítem:\n\n{content}",
+        "Contenido a resumir:\n\n{content}",
     ),
 ])
 ```
@@ -1188,47 +1233,152 @@ SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
 
 ## Infrastructure Layer: GeminiLLMEngine
 
-Usa **LCEL** (LangChain Expression Language) con el operador pipe `|` para componer la chain: `prompt | llm | StrOutputParser()`. El `ChatPromptTemplate` con roles `system`/`human` es el patrón recomendado para producción. `get_num_tokens()` usa el tokenizador nativo del modelo vía `langchain_google_genai`.
+Implementa `LLMEngineInterface`, exponiendo `.llm` y `.embeddings` para que `Summarized` los use internamente.
 
 ```python
 # src/infrastructure/llm/gemini.py
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_core.output_parsers import StrOutputParser
-from ...domain.interfaces import LLMEngineInterface
-from ...domain.entities import LLMConfig
-from ...domain.exceptions import LLMError
-from .prompts import SUMMARIZE_PROMPT
+
+from src.domain.entities import LLMConfig
+from src.domain.interfaces import LLMEngineInterface
+
 
 class GeminiLLMEngine(LLMEngineInterface):
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
+        self._config = config
         self._llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model=config.model_version,
             google_api_key=config.api_key,
         )
         self._embeddings = GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004",
             google_api_key=config.api_key,
         )
-        # Chain LCEL: ChatPromptTemplate | LLM | StrOutputParser
-        # StrOutputParser extrae el string del AIMessage automáticamente
-        self._summarize_chain = SUMMARIZE_PROMPT | self._llm | StrOutputParser()
 
-    def summarize(self, content: str, max_tokens: int) -> str:
-        """Genera resumen usando LCEL chain. El prompt usa roles system/human explícitos."""
+    @property
+    def llm(self) -> ChatGoogleGenerativeAI:
+        return self._llm
+
+    @property
+    def embeddings(self) -> GoogleGenerativeAIEmbeddings:
+        return self._embeddings
+```
+
+---
+
+## Infrastructure Layer: TiktokenTokenizer
+
+Implementa `TokenizerInterface`. Usa tiktoken para contar tokens con encoding configurable vía variable de entorno.
+
+```python
+# src/infrastructure/tools/tokenizer.py
+import tiktoken
+
+from src.domain.interfaces import TokenizerInterface
+
+
+class TiktokenTokenizer(TokenizerInterface):
+    def __init__(self, encoding_name: str = "cl100k_base") -> None:
+        self._encoding = self._get_encoding(encoding_name)
+
+    @staticmethod
+    def _get_encoding(model: str) -> tiktoken.Encoding:
         try:
-            return self._summarize_chain.invoke({
-                "content": content,
-                "max_tokens": max_tokens,
-            })
-        except Exception as e:
-            raise LLMError(f"Error al generar resumen con Gemini: {e}") from e
+            return tiktoken.encoding_for_model(model)
+        except KeyError:
+            return tiktoken.get_encoding("cl100k_base")
 
     def count_tokens(self, text: str) -> int:
-        """Cuenta tokens usando el tokenizador nativo del modelo."""
+        return len(self._encoding.encode(text))
+```
+
+**Variable de entorno:**
+```
+TOKENIZER_ENCODING=cl100k_base
+```
+
+---
+
+## Infrastructure Layer: Summarizer
+
+Patrón Map-Reduce para resumen de textos largos. Divide en chunks, resume cada uno, y combina en un resumen final coherente.
+
+```python
+# src/infrastructure/tools/summarizer/summarizer_engine.py
+class Summarizer:
+    def __init__(self, llm, tokenizer: TokenizerInterface, chunk_size: int = 500):
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+        self._llm = llm
+        self._tokenizer = tokenizer
+        self._chunk_size = chunk_size
+        self._splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            # LangChain llama internamente: length_function(texto) → int
+            length_function=tokenizer.count_tokens,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+
+    # ════════ ZONA PÚBLICA ════════
+
+    def summarize(self, content: str, max_tokens: int) -> str:
+        chunks = self._splitter.split_text(content)
+        if len(chunks) == 1:
+            return self._summarize_single(chunks[0], max_tokens)
+        return self._map_reduce(chunks, max_tokens)
+
+    # ════════ ZONA PRIVADA ════════
+
+    def _summarize_single(self, content: str, max_tokens: int) -> str:
+        return self._invoke(SUMMARIZE_MAP_PROMPT, content, max_tokens)
+
+    def _map_reduce(self, chunks: list[str], max_tokens: int) -> str:
+        partial = [
+            self._summarize_single(c, max_tokens // len(chunks))
+            for c in chunks
+        ]
+        combined = "\n\n".join(partial)
+        return self._invoke(SUMMARIZE_REDUCE_PROMPT, combined, max_tokens)
+
+    def _invoke(self, prompt, content: str, max_tokens: int) -> str:
+        try:
+            formatted = prompt.invoke({"content": content, "max_tokens": max_tokens})
+            return StrOutputParser().invoke(self._llm.invoke(formatted))
+        except Exception as e:
+            raise LLMError(f"Error al generar resumen: {e}") from e
+```
+
+**Flujo Map-Reduce:**
+1. **Split:** Dividir texto en chunks de 500 tokens
+2. **Map:** Resumir cada chunk individualmente
+3. **Reduce:** Combinar resúmenes parciales en uno final
+
+---
+
+## Infrastructure Layer: Summarized (actualizado)
+
+Implementa `TextProcessingInterface`. Usa `Summarizer` para el proceso de resumen map-reduce.
+
+```python
+# src/infrastructure/tools/summarizer/summarize.py
+from src.domain.interfaces import LLMEngineInterface, TextProcessingInterface
+
+
+class Summarized(TextProcessingInterface):
+    def __init__(self, engine_llm: LLMEngineInterface, summarizer):
+        self._llm = engine_llm.llm
+        self._embeddings = engine_llm.embeddings
+        self._summarizer = summarizer
+
+    # ════════ ZONA PÚBLICA ════════
+
+    def summarize(self, content: str, max_tokens: int) -> str:
+        return self._summarizer.summarize(content, max_tokens)
+
+    def count_tokens(self, text: str) -> int:
         return self._llm.get_num_tokens(text)
 
     def get_embeddings(self, text: str) -> list[float]:
-        """Genera embeddings para almacenamiento en ChromaDB."""
         return self._embeddings.embed_query(text)
 ```
 
