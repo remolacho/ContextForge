@@ -1,20 +1,35 @@
-# Plantilla: Plan de Implementación
+# Plan de Implementación
 
 ## Tarea: {nombre}
 
-**ID de Tarea:** {MCF-XXX}
+**ID:** {MCF-XXX}
 
-**Rama:** {feature/MCF-XXX-...}
+**Rama:** {feature/MCF-XXX-descripcion}
 
-**YouTrack:** https://communities.youtrack.cloud/agiles/195-1/current
+**YouTrack:** {URL}
+
+**Skill:** {skill_aplicable}
+
+---
+
+## Descripción
+
+{descripcion_completa_de_tarea}
 
 ---
 
 ## Pasos
 
-| Paso | Descripción | Archivos |
-|------|-------------|----------|
+| # | Descripción | Archivos |
+|---|-------------|----------|
 | 1 | ... | ... |
+
+---
+
+## Archivos a Crear/Modificar
+
+- `src/...`
+- `app/...`
 
 ---
 
@@ -26,4 +41,4 @@ make check
 
 ---
 
-**Responde "next" para iniciar.**
+**Responde "next" para iniciar la ejecución.**
