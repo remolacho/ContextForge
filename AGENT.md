@@ -2,6 +2,8 @@
 
 ## Inicialización
 
+**AL ESCRIBIR `start` → SIEMPRE interpretar como flujo AGENT.md (sesión de trabajo)**
+
 Al iniciar con `start`:
 1. Verificar sesión activa en `.context/session_*.md`
 2. Si existe → preguntar retomar o nueva
@@ -175,5 +177,14 @@ Si flujo anterior no completado:
 
 | Comando | Acción |
 |---------|--------|
-| `start` | Iniciar o retomar sesión de desarrollo |
-| `next` | Continuar al siguiente paso |
+| `start` | **Flujo AGENT.md**: Iniciar o retomar sesión de desarrollo |
+| `next` | Continuar al siguiente paso del flujo |
+| `serve` | Iniciar servidor (preguntar Docker o local) |
+
+### Flujo de `serve`
+
+```
+serve → ¿Docker o Local?
+  ├── Docker → make up
+  └── Local  → uvicorn main:app --reload --port 8999
+```
