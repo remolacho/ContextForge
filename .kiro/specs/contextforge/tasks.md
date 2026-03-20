@@ -10,7 +10,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
 
 ## Tareas
 
-- [ ] 1. Configurar estructura del proyecto y dependencias
+- [x] 1. Configurar estructura del proyecto y dependencias
   > Prepara el esqueleto del proyecto: archivos de configuración, dependencias Python, Docker y todos los directorios vacíos. Sin esto, nada más puede ejecutarse. Es la base sobre la que se construye todo.
   - Crear `pyproject.toml` con dependencias: `fastapi`, `uvicorn`, `pydantic-settings`, `chromadb`, `langchain`, `langchain-google-genai`, `langchain-core`, `requests`, `hypothesis`, `pytest`, `pytest-asyncio`
   - Crear `requirements.txt` generado desde `pyproject.toml` (ejecutar `pip-compile` o exportar manualmente)
@@ -20,10 +20,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
   - Crear todos los directorios y archivos `__init__.py` vacíos según la estructura del `design.md` (sin `__init__.py` Python no reconoce los módulos)
   - _Ver `requirements.md`: Req. 11 — Infraestructura Docker (criterios 1-5)_
 
-- [ ] 2. Implementar Domain Layer
+- [x] 2. Implementar Domain Layer
   > El dominio es el núcleo del sistema: define qué datos existen, qué contratos deben cumplir los componentes y qué errores pueden ocurrir. No depende de ninguna librería externa. Si el dominio está bien definido, el resto del código es predecible.
 
-  - [ ] 2.1 Crear entidades de dominio
+  - [x] 2.1 Crear entidades de dominio
     > Las entidades son los objetos de datos que viajan por todo el sistema. Usar `@dataclass` de Python para definirlas de forma limpia sin boilerplate.
     - Implementar `src/domain/entities.py` con las siguientes dataclasses:
       - `ProviderConfig`: guarda `code` ("youtrack", "jira"), `token` y `base_url` opcional de un proveedor
@@ -34,7 +34,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `CacheEntry`: representa una entrada en caché con `item_id`, `provider_name`, `content_hash`, `tool`, `content`, `metadata` y `from_cache: bool`
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§2), Req. 3 — read_full (§1), Req. 4 — read_summarize (§1), Req. 5 — read_chunks (§2)_
 
-  - [ ] 2.2 Crear interfaces (ports) de dominio
+  - [x] 2.2 Crear interfaces (ports) de dominio
     > Las interfaces definen los contratos que deben cumplir las implementaciones concretas. Permiten que los casos de uso no dependan de ChromaDB, YouTrack o Gemini directamente, sino de abstracciones. Esto facilita testear con mocks y cambiar implementaciones sin tocar la lógica de negocio.
     - Implementar `src/domain/interfaces.py` con tres ABCs (clases abstractas):
       - `ProviderInterface`: contrato para proveedores de datos. Métodos: `get_item(item_id, config) → ContextItem` y `validate_config(config) → bool`
@@ -42,7 +42,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `LLMEngineInterface`: contrato para el motor LLM. Métodos: `summarize(content, max_tokens) → str`, `count_tokens(text) → int` y `get_embeddings(text) → list[float]`
     - _Ver `requirements.md`: Req. 7 — ProviderFactory (§5), Req. 8 — LLMFactory (§4)_
 
-  - [ ] 2.3 Crear jerarquía de excepciones de dominio
+  - [x] 2.3 Crear jerarquía de excepciones de dominio
     > Tener excepciones propias del dominio permite que los exception handlers de FastAPI capturen errores específicos y devuelvan el código HTTP correcto. Sin esto, todos los errores serían genéricos 500.
     - Implementar `src/domain/exceptions.py` con toda la jerarquía bajo `ContextForgeError` (clase base):
       - `ConfigurationError`: error de configuración general
@@ -58,7 +58,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§4), Req. 3 — read_full (§5,6,7), Req. 4 — read_summarize (§7), Req. 5 — read_chunks (§7), Req. 7 — ProviderFactory (§3), Req. 8 — LLMFactory (§3)_
 
 
-- [ ] 3. Configurar linting y Makefile
+- [x] 3. Configurar linting y Makefile
   > Configurar herramientas de calidad de código desde el inicio evita acumular deuda técnica. Un `Makefile` centraliza los comandos más usados para que cualquier dev pueda correr linting, tests o levantar el proyecto con un solo comando sin tener que recordar flags.
   - Agregar dependencias de desarrollo en `pyproject.toml`: `ruff` (linter + formatter rápido), `mypy` (type checking)
   - Crear `ruff.toml` o sección `[tool.ruff]` en `pyproject.toml` con configuración básica:
@@ -76,10 +76,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - `make up` → ejecuta `docker-compose up --build`
     - `make down` → ejecuta `docker-compose down`
 
-- [ ] 4. Implementar Infrastructure Layer: Builders
+- [x] 4. Implementar Infrastructure Layer: Builders
   > Los builders construyen objetos complejos paso a paso usando una API fluida (encadenamiento de métodos). Evitan constructores con muchos parámetros y centralizan la lógica de construcción (ej. calcular el hash SHA-256 siempre en el mismo lugar).
 
-  - [ ] 4.1 Implementar `ContextItemBuilder`
+  - [x] 4.1 Implementar `ContextItemBuilder`
     > Este builder debe ser **genérico y agnóstico al proveedor**. Cada proveedor es responsable de transformar su respuesta JSON específica a campos genéricos antes de pasarlos al builder. Esto cumple con el principio Open/Closed: agregar un nuevo proveedor (Jira, GitHub, etc.) no requiere modificar el builder.
     - Crear `src/infrastructure/builders/context_item.py` con métodos fluidos:
       - `set_item_id(item_id)`: guarda el ID del ítem
@@ -92,7 +92,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - **NO** debe tener métodos como `from_youtrack_response()` - eso violaría el principio Open/Closed
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§3), Req. 6 — Caché (§1)_
 
-  - [ ] 4.2 Escribir property test para ContextItemBuilder
+  - [x] 4.2 Escribir property test para ContextItemBuilder
     > Verifica que el hash SHA-256 siempre es el mismo para el mismo contenido (determinismo) y diferente para contenido diferente.
     - Archivo: `tests/property/test_properties_providers.py`
     - **Propiedad 20:** Para cualquier combinación de título, descripción y comentarios, `build()` siempre produce el mismo `content_hash` (SHA-256 determinista). Si cambia cualquier campo, el hash cambia.
@@ -100,7 +100,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Comentario en el test: `# Feature: contextforge, Propiedad 20: ContextItemBuilder produce content_hash SHA-256 consistente`
     - _Valida: Requisito 6.1_
 
-  - [ ] 4.3 Implementar `CacheEntryBuilder`
+  - [x] 4.3 Implementar `CacheEntryBuilder`
     > Construye una `CacheEntry` completa con todos sus metadatos de forma legible. Evita crear el objeto con un constructor de 7 parámetros.
     - Crear `src/infrastructure/builders/cache_entry.py` con métodos fluidos:
       - `for_item(item: ContextItem)`: copia `item_id`, `provider_name` y `content_hash` del ítem
@@ -110,10 +110,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `build()`: retorna el `CacheEntry` con `from_cache=False`
     - _Ver `requirements.md`: Req. 3 — read_full (§3), Req. 4 — read_summarize (§5), Req. 5 — read_chunks (§5)_
 
-- [ ] 5. Implementar Infrastructure Layer: Factories
+- [x] 5. Implementar Infrastructure Layer: Factories
   > Los factories crean instancias de proveedores y motores LLM basándose en el código/tipo recibido en la configuración. Es un enfoque simple: `ProviderFactory` usa `config.code` para saber qué clase instanciar, `LLMFactory` usa `config.engine_type`.
 
-  - [ ] 5.1 Implementar `ProviderFactory`
+  - [x] 5.1 Implementar `ProviderFactory`
     > Factory simple que instancia el proveedor según `config.code`. No requiere registro previo; cada proveedor se agrega directamente en el código.
     - Crear `src/infrastructure/providers/factory.py`:
       - Clase `ProviderFactory` con constructor que recibe `config: ProviderConfig`
@@ -122,14 +122,14 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
         - Si no coincide → lanza `ProviderNotRegisteredError`
     - _Ver `requirements.md`: Req. 7 — ProviderFactory (§1,2,3,4)_
 
-  - [ ]* 5.2 Escribir property test para ProviderFactory
+  - [x]* 5.2 Escribir property test para ProviderFactory
     > Verifica que el factory instancia la clase correcta según `config.code`.
     - Archivo: `tests/property/test_properties_providers.py`
     - Test: `ProviderFactory(config).create()` retorna `YouTrackProvider` para `code="youtrack"`
     - Test: `ProviderFactory(config).create()` lanza `ProviderNotRegisteredError` para code desconocido
     - _Valida: Requisito 7.3_
 
-  - [ ] 5.3 Implementar `LLMFactory`
+  - [x] 5.3 Implementar `LLMFactory`
     > Factory simple que instancia el motor según `config.engine_type`. No requiere registro previo.
     - Crear `src/infrastructure/llm/factory.py`:
       - Clase `LLMFactory` con constructor que recibe `config: LLMConfig`
@@ -138,7 +138,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
         - Si no coincide → lanza `LLMEngineNotRegisteredError`
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§1,2,3,7)_
 
-  - [ ]* 5.4 Escribir property test para LLMFactory
+  - [x]* 5.4 Escribir property test para LLMFactory
     > Verifica que el factory instancia la clase correcta según `config.engine_type`.
     - Archivo: `tests/property/test_properties_providers.py`
     - Test: `LLMFactory(config).create()` retorna `GeminiLLMEngine` para `engine_type="gemini"`
@@ -146,10 +146,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Valida: Requisito 8.3_
 
 
-- [ ] 6. Implementar Infrastructure Layer: Proveedores
+- [x] 6. Implementar Infrastructure Layer: Proveedores
   > Los proveedores son los adaptadores que saben cómo hablar con sistemas externos (YouTrack, Jira, etc.). Implementan `ProviderInterface` para que el resto del sistema no sepa ni le importe con qué API externa se está comunicando.
 
-  - [ ] 6.1 Implementar `YouTrackProvider`
+  - [x] 6.1 Implementar `YouTrackProvider`
     > El único proveedor funcional del MVP. Hace una llamada HTTP a la API de YouTrack, maneja los errores de autenticación y construye el `ContextItem` usando el builder. **El proveedor es responsable de transformar su respuesta JSON específica a campos genéricos** antes de pasarlos al builder.
     - Crear `src/infrastructure/providers/task/youtrack.py` implementando `ProviderInterface`:
       - Constructor recibe `config: ProviderConfig` y lo guarda en `self._config`
@@ -166,7 +166,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `validate_config(config)`: retorna `True` si `token` no está vacío y `base_url` es una URL válida
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§1,2,3,4,5,6)_
 
-  - [ ]* 6.2 Escribir unit tests para YouTrackProvider
+  - [x]* 6.2 Escribir unit tests para YouTrackProvider
     > Verifica que `validate_config()` retorna valores correctos y que `get_item()` maneja errores HTTP correctamente.
     - Archivo: `tests/unit/test_youtrack_provider.py`
     - Tests para `validate_config()`:
@@ -180,7 +180,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Status 5xx → `ProviderServerError`
     - _Ver `requirements.md`: Req. 9 — Integración YouTrack (§2,3)_
 
-  - [ ] 6.3 Crear stubs de proveedores futuros
+  - [x] 6.3 Crear stubs de proveedores futuros
     > Crear los archivos vacíos ahora establece la estructura para escalar. Un stub implementa la interfaz pero lanza `NotImplementedError`, dejando claro que aún no está implementado. **Cuando se implementen, deberán transformar su JSON específico a campos genéricos usando ContextItemBuilder** (igual que YouTrackProvider).
     - Crear `src/infrastructure/providers/git/github.py`: `GitHubProvider` stub que lanza `NotImplementedError`
     - Crear `src/infrastructure/providers/git/gitlab.py`: `GitLabProvider` stub que lanza `NotImplementedError`
@@ -189,10 +189,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - **Nota:** Jira se agregará directamente en `ProviderFactory.create()` cuando se implemente
     - _Ver `requirements.md`: Req. 7 — ProviderFactory (§4,7)_
 
-- [ ] 7. Implementar Infrastructure Layer: LLM
+- [x] 7. Implementar Infrastructure Layer: LLM
   > Integra LangChain con Gemini para generar resúmenes. Usa el patrón LCEL (LangChain Expression Language) que encadena prompt → modelo → parser de forma declarativa y legible.
 
-  - [ ] 7.1 Implementar prompts LangChain
+  - [x] 7.1 Implementar prompts LangChain
     > Centralizar el prompt en un archivo dedicado evita duplicación y facilita ajustarlo sin tocar la lógica del engine. Usar `ChatPromptTemplate.from_messages` con roles `system`/`human` es la práctica recomendada de LangChain.
     - Crear `src/infrastructure/templates_prompts/summarize.py`:
       - Importar `ChatPromptTemplate` de `langchain_core.prompts`
@@ -204,7 +204,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
         ```
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§6)_
 
-  - [ ] 7.2 Refactorizar `GeminiLLMEngine`
+  - [x] 7.2 Refactorizar `GeminiLLMEngine`
     > Implementación concreta del motor LLM usando Gemini. Expone `.llm` y `.embeddings` para que `Summarized` los use internamente.
     - Refactorizar `src/infrastructure/llm/gemini.py` implementando `LLMEngineInterface`:
       - Constructor recibe solo `config: LLMConfig`
@@ -214,7 +214,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Modelo configurable via `config.model_version` (default: `gemini-2.5-flash-lite`)
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§5,6,7)_
 
-  - [ ] 7.3 Implementar `Summarized`
+  - [x] 7.3 Implementar `Summarized`
     > Implementa `TextProcessingInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
     - Crear `src/infrastructure/tools/summarize.py` implementando `TextProcessingInterface`:
       - Constructor recibe `engine_llm: LLMEngineInterface` y `prompt_template: ChatPromptTemplate`
@@ -227,10 +227,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 8 — LLMFactory (§5,6,7)_
 
 
-- [ ] 8. Implementar Infrastructure Layer: ChromaCacheRepository
+- [x] 8. Implementar Infrastructure Layer: ChromaCacheRepository
   > Implementa el repositorio de caché usando ChromaDB. Cada entrada se identifica por la combinación `item_id + provider_name + content_hash + tool`. Si el contenido del ítem cambia (nuevo `content_hash`), la caché no hace match y se regenera.
 
-  - [ ] 8.1 Implementar `ChromaCacheRepository`
+  - [x] 8.1 Implementar `ChromaCacheRepository`
     > ChromaDB es una base de datos vectorial. Aquí la usamos principalmente como almacén de documentos con filtros por metadatos, no tanto por similitud semántica.
     - Crear `src/infrastructure/cache/chroma.py` implementando `CacheRepositoryInterface`:
       - Constructor: conectar con `chromadb.HttpClient(host=host, port=port)` y obtener/crear colección `contextforge_cache` con `get_or_create_collection()`
@@ -240,7 +240,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Función auxiliar `_build_doc_id(entry)`: construir un ID único como `f"{entry.item_id}:{entry.provider_name}:{entry.tool}:{entry.content_hash}"` (agregar `max_tokens` si aplica)
     - _Ver `requirements.md`: Req. 10 — ChromaDB (§1,2,4), Req. 6 — Caché (§1,2)_
 
-  - [ ]* 8.2 Escribir unit tests para ChromaCacheRepository
+  - [x]* 8.2 Escribir unit tests para ChromaCacheRepository
     > Tests unitarios con mock de ChromaDB para verificar que los métodos llaman a la API de ChromaDB con los parámetros correctos.
     - Archivo: `tests/unit/test_chroma_cache.py`
     - Test `lookup` con cache hit: mock retorna un documento → verificar que se retorna `CacheEntry` con `from_cache=True`
@@ -249,10 +249,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Test `invalidate`: verificar que `delete` es llamado con el filtro `{"item_id": ..., "provider_name": ..., "tool": ...}`
     - _Ver `requirements.md`: Req. 10 — ChromaDB (§2), Req. 6 — Caché (§1)_
 
-  - [ ] 9. Implementar Application Layer: Casos de Uso
+  - [x] 9. Implementar Application Layer: Casos de Uso
     > Los casos de uso son el corazón de la lógica de negocio. **IMPORTANTE:** El flujo debe ser: 1) verificar caché PRIMERO, 2) si hay hit retornar, 3) si hay miss ir al proveedor, 4) procesar (si aplica con LLM), 5) guardar en caché, 6) retornar. Esto evita consultas redundantes al proveedor y al LLM.
 
-    - [ ] 9.1 Implementar `ReadFullUseCase`
+    - [x] 9.1 Implementar `ReadFullUseCase`
       > Devuelve el texto completo del ítem. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor para obtener contenido fresco y calcular content_hash, luego busca en caché. Si hay hit (contenido no cambió), retorna caché. Si hay miss, guarda y retorna.
       - Crear `src/application/services/use_cases/read_full.py`:
         - Constructor recibe `provider: ProviderInterface` y `cache: CacheRepositoryInterface`
@@ -263,7 +263,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
           4. Si hay miss: construir `CacheEntry` con `CacheEntryBuilder`, llamar `cache.store(entry)` y retornar
       - _Ver `requirements.md`: Req. 3 — read_full (§1,2,3,4)_
 
-    - [ ]* 9.2 Escribir unit tests para ReadFullUseCase
+    - [x]* 9.2 Escribir unit tests para ReadFullUseCase
       > Tests con mocks de proveedor y caché para verificar el comportamiento en cache hit y miss. **IMPORTANTE:** Verificar que el flujo híbrido primero va al proveedor, luego busca en caché.
       - Archivo: `tests/unit/test_read_full_usecase.py`
       - Test cache hit: mock de `provider.get_item` retorna item con content_hash → mock de `cache.lookup` retorna CacheEntry → verificar que se retorna `from_cache=True`
@@ -271,7 +271,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Test flujo: verificar que `provider.get_item` SIEMPRE es llamado (datos frescos), y `cache.lookup` se llama con el content_hash del item
       - _Ver `requirements.md`: Req. 3 — read_full (§3,4)_
 
-  - [ ] 9.3 Implementar `ReadSummarizeUseCase`
+  - [x] 9.3 Implementar `ReadSummarizeUseCase`
     > Devuelve un resumen del ítem generado por el LLM. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, calcula content_hash, luego busca en caché. Si hay hit (contenido no cambió), retorna caché sin llamar LLM.
       - Crear `src/application/services/use_cases/read_summarize.py`:
       - Constructor recibe `provider`, `cache` y `summarized: TextProcessingInterface`
@@ -284,7 +284,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
         6. Construir `CacheEntry` con el resumen y `metadata={"max_tokens": max_tokens}`, guardar en caché y retornar
     - _Ver `requirements.md`: Req. 4 — read_summarize (§1,2,3,4,5,6,7)_
 
-  - [ ]* 9.4 Escribir property tests para ReadSummarizeUseCase
+  - [x]* 9.4 Escribir property tests para ReadSummarizeUseCase
     > Verifica que la validación de `max_tokens` es robusta y que el flujo híbrido detecta cambios de contenido correctamente.
     - Archivo: `tests/property/test_properties_validation.py`
     - **Propiedad 5:** Para cualquier `max_tokens` fuera del rango [1, 10000], `execute()` siempre lanza `ValidationError`. Para cualquier valor dentro del rango, nunca lanza ese error.
@@ -292,7 +292,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Comentario: `# Feature: contextforge, Propiedad 5: Rechazo de max_tokens fuera de rango`
     - _Ver `requirements.md`: Req. 4 — read_summarize (§7), Req. 6 — Caché (§2)_
 
-  - [ ] 9.5 Implementar `ReadChunksUseCase`
+  - [x] 9.5 Implementar `ReadChunksUseCase`
     > Divide el contenido del ítem en fragmentos de máximo 500 tokens, usando `RecursiveCharacterTextSplitter` de LangChain y `TiktokenTokenizer` para conteo preciso de tokens. El flujo híbrido garantiza datos siempre actualizados: primero va al proveedor, luego busca en caché por content_hash. El cliente puede pedir todos los chunks o solo algunos por índice.
       - Crear `src/application/services/use_cases/read_chunks.py`:
       - Constructor recibe `provider`, `cache` y `tokenizer: TokenizerInterface`
@@ -308,7 +308,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `_filter_by_indices(chunks, indices)`: si algún índice está fuera del rango [1, total_chunks], lanzar `ValidationError` con mensaje que indique el rango válido
     - _Ver `requirements.md`: Req. 5 — read_chunks (§1,2,3,4,5,6,7,9)_
 
-  - [ ] 9.5.1 Implementar `TiktokenTokenizer`
+  - [x] 9.5.1 Implementar `TiktokenTokenizer`
     > Implementa `TokenizerInterface` usando tiktoken para conteo preciso de tokens. El encoding se configura via variable de entorno `TOKENIZER_ENCODING` con fallback a `cl100k_base`.
       - Crear `src/infrastructure/tools/tokenizer.py`:
       - Clase `TiktokenTokenizer` que implementa `TokenizerInterface`
@@ -318,7 +318,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Agregar `tiktoken>=0.7.0` y `langchain-text-splitters` a dependencias
     - _Ver `requirements.md`: Req. 5 — read_chunks (§2)_
 
-  - [ ]* 9.6 Escribir property tests para ReadChunksUseCase
+  - [x]* 9.6 Escribir property tests para ReadChunksUseCase
     > Verifica las propiedades fundamentales de la fragmentación y el flujo híbrido: límite de tokens, cobertura completa del texto, selección correcta por índice, y detección de cambios de contenido.
     - Archivo: `tests/property/test_properties_chunks.py`
     - **Propiedad 6:** Para cualquier texto, ningún chunk supera 500 tokens.
@@ -330,7 +330,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Comentario: `# Feature: contextforge, Propiedad 6: Chunks no exceden el límite de tokens`
     - _Ver `requirements.md`: Req. 5 — read_chunks (§2,4,7,9), Req. 6 — Caché (§3,5)_
 
-  - [ ] 9.7 Implementar Summarizer con patrón Map-Reduce
+  - [x] 9.7 Implementar Summarizer con patrón Map-Reduce
     > Para textos largos, el resumen directo puede perder contexto. El patrón map-reduce divide en chunks, resume cada uno, y combina los resúmenes parciales en uno coherente.
     - Crear `src/infrastructure/tools/summarizer/`:
       - `summarizer_engine.py`: Clase Summarizer con lógica map-reduce
@@ -341,17 +341,17 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Refactorizar `Summarized` para usar Summarizer como dependencia
     - El flujo: texto → split → [map] → [reduce] → resumen final
 
-- [ ] 10. Checkpoint — Verificar capa de dominio y aplicación
+- [x] 10. Checkpoint — Verificar capa de dominio y aplicación
   > Pausa para verificar que todo lo construido hasta aquí funciona correctamente antes de continuar con la interfaz HTTP. Es más fácil corregir errores de lógica ahora que después de agregar FastAPI encima.
   - Ejecutar todos los tests: `pytest tests/unit/ tests/property/ -v`
   - Verificar que no hay errores de importación entre módulos
   - Preguntar al usuario si hay dudas o ajustes antes de continuar con la Interface Layer
 
 
-- [ ] 11. Implementar Application Layer: ContextService (Facade)
+- [x] 11. Implementar Application Layer: ContextService (Facade)
   > El `ContextService` es la fachada que simplifica el acceso a los casos de uso desde los controllers. Valida que el proveedor solicitado esté configurado en la sesión antes de delegar al caso de uso correspondiente.
 
-  - [ ] 11.1 Implementar `ContextService`
+  - [x] 11.1 Implementar `ContextService`
     > Sin esta fachada, cada controller tendría que instanciar el proveedor, verificar la sesión y crear el caso de uso. La fachada centraliza esa lógica.
     - Crear `src/application/services/context_service.py`:
       - Constructor recibe `cache: CacheRepositoryInterface` y `llm: LLMEngineInterface`
@@ -361,7 +361,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Si está: obtener `provider_config = session.providers[provider_name]`, instanciar el proveedor con `ProviderFactory.create(provider_name, provider_config)` y delegar al caso de uso correspondiente
     - _Ver `requirements.md`: Req. 3 — read_full (§1,5), Req. 4 — read_summarize (§1), Req. 5 — read_chunks (§1)_
 
-  - [ ]* 11.2 Escribir unit tests para ContextService
+  - [x]* 11.2 Escribir unit tests para ContextService
     > Verifica que la fachada valida correctamente la sesión y delega al caso de uso correcto.
     - Archivo: `tests/unit/test_context_service.py`
     - Test `SessionConfigError`: llamar cualquier método con un `provider_name` que no está en `session.providers` → verificar que se lanza `SessionConfigError` con mensaje que incluye los proveedores disponibles
@@ -370,10 +370,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Test delegación `read_chunks`: verificar que se llama `ReadChunksUseCase.execute()` con `chunk_indices` correcto
     - _Ver `requirements.md`: Req. 3 — read_full (§5), Req. 4 — read_summarize (§1), Req. 5 — read_chunks (§1)_
 
-- [ ] 12. Implementar Interface Layer: Schemas y SessionManager
+- [x] 12. Implementar Interface Layer: Schemas y SessionManager
   > Los schemas Pydantic validan automáticamente el JSON que llega en las requests HTTP. El `SessionManager` guarda en memoria la configuración de cada sesión MCP activa.
 
-  - [ ] 12.1 Implementar schemas Pydantic
+  - [x] 12.1 Implementar schemas Pydantic
     > Pydantic valida y parsea el JSON de entrada automáticamente. Si el cliente envía un campo con tipo incorrecto, FastAPI retorna 422 antes de que el código llegue al controller.
     - Crear `app/schemas/mcp_request.py` con los modelos de entrada:
       - `ProviderConfigSchema`: campos `token: str` y `base_url: str | None = None`
@@ -390,7 +390,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `ErrorResponse`: campo `message: str` con `json_schema_extra = {"example": {"message": "Descripción del error"}}`
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§2), Req. 12 — Integración agentes AI (§1)_
 
-  - [ ] 12.2 Implementar `SessionManager`
+  - [x] 12.2 Implementar `SessionManager`
     > Guarda en memoria la configuración de cada sesión MCP. Cuando el cliente hace `initialize`, se guarda su config. Cuando hace `tools/call`, se recupera para saber qué proveedores tiene disponibles.
     - Crear `app/session.py`:
       - Clase `SessionManager` con `_sessions: dict[str, SessionConfig] = {}`
@@ -402,7 +402,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - `delete(session_id)`: eliminar silenciosamente si existe, ignorar si no existe
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§2,3,4,5)_
 
-  - [ ]* 12.3 Escribir property tests para SessionManager
+  - [x]* 12.3 Escribir property tests para SessionManager
     > Verifica que la validación de sesiones es robusta para cualquier combinación de inputs inválidos.
     - Archivo: `tests/property/test_properties_validation.py`
     - **Propiedad 1:** Para cualquier `ProviderConfig` con `token` vacío o `base_url` con formato inválido, `store()` siempre lanza `SessionConfigError`.
@@ -410,16 +410,16 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Comentario: `# Feature: contextforge, Propiedad 1: Validación de campos faltantes en ProviderConfig`
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§4,5)_
 
-- [ ] 13. Implementar Interface Layer: Controllers y Exception Handlers
+- [x] 13. Implementar Interface Layer: Controllers y Exception Handlers
   > Los controllers son los puntos de entrada HTTP. Reciben la request, la parsean con los schemas Pydantic, delegan al `ContextService` y retornan la respuesta. Los exception handlers capturan errores de dominio y los convierten en respuestas HTTP con el código correcto.
 
-  - [ ] 13.1 Implementar `ApplicationController` base
+  - [x] 13.1 Implementar `ApplicationController` base
     > Clase base que todos los controllers heredan. Recibe un `APIRouter` y lo guarda en `self.router` para que los controllers registren sus endpoints en él.
     - Crear `app/controllers/application_controller.py`:
       - Clase `ApplicationController` con constructor `__init__(self, router: APIRouter)` que guarda `self.router = router`
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§1)_
 
-  - [ ] 13.2 Implementar exception handlers globales
+  - [x] 13.2 Implementar exception handlers globales
     > En lugar de manejar errores en cada endpoint, los handlers globales capturan las excepciones de dominio y retornan la respuesta HTTP correcta automáticamente. `main.py` los registra con `app.add_exception_handler()`.
     - Crear `app/exceptions/exception_handler.py`:
       - Handler async para cada excepción: `session_config_error_handler` → 400, `item_not_found_handler` → 404, `authentication_error_handler` → 401, `validation_error_handler` → 422, `provider_not_registered_handler` → 422, `generic_contextforge_handler` → 422
@@ -427,14 +427,14 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Exportar `exception_handlers: dict = {SessionConfigError: handler, ...}` para que `main.py` lo itere
     - _Ver `requirements.md`: Req. 3 — read_full (§5,6,7), Req. 4 — read_summarize (§7), Req. 5 — read_chunks (§7)_
 
-  - [ ] 13.3 Implementar `HealthController`
+  - [x] 13.3 Implementar `HealthController`
     > Endpoint simple para verificar que el servidor está vivo. Útil para Docker healthchecks y monitoreo.
     - Crear `app/controllers/health_controller.py`:
       - Clase `HealthController(ApplicationController)`
       - En `__init__`: registrar `@self.router.get("/health")` que retorna `{"status": "ok"}`
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§1)_
 
-  - [ ] 13.4 Implementar `MCPController`
+  - [x] 13.4 Implementar `MCPController`
     > El controller principal. Recibe todas las requests MCP en un único endpoint POST y las despacha según el campo `method` del body JSON.
     - Crear `app/controllers/mcp_controller.py`:
       - Clase `MCPController(ApplicationController)` con constructor que recibe `router`, `context_service` y `session_manager`
@@ -446,7 +446,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Registrar `GET /` que retorna `{"message": "SSE endpoint activo"}` (stub para compatibilidad con spec MCP 2025-03-26)
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§1,2,3,6), Req. 3 — read_full (§1), Req. 4 — read_summarize (§1), Req. 5 — read_chunks (§1), Req. 12 — Integración agentes AI (§1,3,4)_
 
-  - [ ]* 13.5 Escribir property tests para validaciones del MCPController
+  - [x]* 13.5 Escribir property tests para validaciones del MCPController
     > Verifica que el controller rechaza correctamente inputs inválidos y que las respuestas contienen solo el contexto solicitado.
     - Archivo: `tests/property/test_properties_validation.py`
     - **Propiedad 2:** Para cualquier `base_url` con formato inválido (sin `http://` o `https://`, con espacios, etc.), el sistema retorna error antes de intentar conectarse al proveedor.
