@@ -11,10 +11,12 @@ dependencies = [
     "langchain",
     "langchain-google-genai",
     "langchain-core",
+    "langchain-text-splitters",
     "requests",
     "hypothesis",
     "pytest",
     "pytest-asyncio",
+    "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]

@@ -26,6 +26,11 @@ class LLMEngineInterface(ABC):
     def embeddings(self) -> Embeddings: ...
 
 
+class TokenizerInterface(ABC):
+    @abstractmethod
+    def count_tokens(self, text: str) -> int: ...
+
+
 class TextProcessingInterface(ABC):
     @abstractmethod
     def summarize(self, content: str, max_tokens: int) -> str: ...

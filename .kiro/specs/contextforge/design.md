@@ -41,8 +41,10 @@ graph LR
     end
     subgraph "Application Layer"
         SVC["ContextService (Facade)"]
-        subgraph "services/"
+        subgraph "services/use_cases/"
+            RF["ReadFullUseCase"]
             RS["ReadSummarizeUseCase"]
+            RC["ReadChunksUseCase"]
         end
     end
     subgraph "Domain Layer"
@@ -74,8 +76,12 @@ graph LR
     MAIN --> ROUTES
     ROUTES --> CTRL
     CTRL --> SVC
+    SVC --> RF
     SVC --> RS
+    SVC --> RC
+    RF --> P
     RS --> P
+    RC --> P
     YT --> P
     GH --> P
     GL --> P
@@ -157,14 +163,14 @@ contextforge/
 │   │   └── exceptions.py            # Jerarquía completa de excepciones
 │   ├── application/
 │   │   ├── __init__.py
-│   │   ├── use_cases/
-│   │   │   ├── __init__.py
-│   │   │   ├── read_full.py         # ReadFullUseCase
-│   │   │   ├── read_summarize.py    # ReadSummarizeUseCase
-│   │   │   └── read_chunks.py       # ReadChunksUseCase
 │   │   └── services/
 │   │       ├── __init__.py
-│   │       └── context_service.py   # ContextService (Facade)
+│   │       ├── context_service.py   # ContextService (Facade)
+│   │       └── use_cases/
+│   │           ├── __init__.py
+│   │           ├── read_full.py     # ReadFullUseCase
+│   │           ├── read_summarize.py # ReadSummarizeUseCase
+│   │           └── read_chunks.py   # ReadChunksUseCase
 │   └── infrastructure/
 │       ├── providers/
 │       │   ├── __init__.py          # Registro de todos los proveedores en ProviderFactory
@@ -184,9 +190,20 @@ contextforge/
 │       ├── llm/
 │       │   ├── __init__.py          # Registro en LLMFactory
 │       │   ├── factory.py           # LLMFactory
-│       │   ├── prompts.py           # ChatPromptTemplate con roles system/human (LCEL)
 │       │   ├── gemini.py            # GeminiLLMEngine (LCEL chain: prompt | llm | StrOutputParser)
 │       │   └── openai.py            # OpenAILLMEngine (stub)
+│       ├── templates_prompts/
+│       │   ├── __init__.py
+│       │   ├── summarize.py          # SUMMARIZE_PROMPT
+│       │   ├── summarize_map.py      # SUMMARIZE_MAP_PROMPT
+│       │   └── summarize_reduce.py   # SUMMARIZE_REDUCE_PROMPT
+│       ├── tools/
+│       │   ├── __init__.py
+│       │   ├── tokenizer.py          # TiktokenTokenizer
+│       │   └── summarizer/
+│       │       ├── __init__.py
+│       │       ├── summarize.py      # Summarized (TextProcessingInterface)
+│       │       └── summarizer_engine.py # Summarizer (map-reduce)
 │       ├── cache/
 │       │   ├── __init__.py
 │       │   └── chroma.py            # ChromaCacheRepository
@@ -198,17 +215,12 @@ contextforge/
 ├── tests/
 │   ├── unit/
 │   │   ├── test_read_full_usecase.py
-│   │   ├── test_read_summarize_usecase.py
-│   │   ├── test_read_chunks_usecase.py
-│   │   ├── test_youtrack_provider.py
-│   │   ├── test_provider_factory.py
-│   │   ├── test_llm_factory.py
+│   │   ├── test_tokenizer.py
 │   │   ├── test_chroma_cache.py
-│   │   └── test_context_service.py
+│   │   └── ...
 │   ├── property/
-│   │   ├── test_properties_cache.py
+│   │   ├── test_llm_engine.py
 │   │   ├── test_properties_chunks.py
-│   │   ├── test_properties_validation.py
 │   │   └── test_properties_providers.py
 │   └── integration/
 │       └── test_mcp_http.py
@@ -574,6 +586,13 @@ class LLMEngineInterface(ABC):
     def embeddings(self) -> Embeddings: ...
 
 
+class TokenizerInterface(ABC):
+    """Interfaz para conteo de tokens usando tiktoken."""
+
+    @abstractmethod
+    def count_tokens(self, text: str) -> int: ...
+
+
 class TextProcessingInterface(ABC):
     """Interfaz genérica para procesamiento de texto con LLM."""
 
@@ -690,9 +709,9 @@ engine = factory.create()  # Retorna GeminiLLMEngine (LLMEngineInterface)
 from ...domain.interfaces import CacheRepositoryInterface, LLMEngineInterface
 from ...domain.entities import SessionConfig, CacheEntry, Chunk
 from ...domain.exceptions import SessionConfigError
-from ..use_cases.read_full import ReadFullUseCase
-from ..use_cases.read_summarize import ReadSummarizeUseCase
-from ..use_cases.read_chunks import ReadChunksUseCase
+from .use_cases.read_full import ReadFullUseCase
+from .use_cases.read_summarize import ReadSummarizeUseCase
+from .use_cases.read_chunks import ReadChunksUseCase
 from ...infrastructure.providers.factory import ProviderFactory
 from ...infrastructure.llm.factory import LLMFactory
 
@@ -757,7 +776,7 @@ Los casos de uso contienen la **lógica de negocio real**: validación de parám
 > **Flujo híbrido:** Primero ir al proveedor para obtener contenido fresco y calcular content_hash. Luego buscar en caché por content_hash + tool + params. Si hay hit, retornar caché. Si hay miss, ejecutar el tool (summarize/chunks), guardar en caché y retornar. Esto garantiza datos actualizados mientras optimiza llamadas al LLM cuando el contenido no cambió.
 
 ```python
-# src/application/use_cases/read_full.py
+# src/application/services/use_cases/read_full.py
 from datetime import datetime, timezone
 from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface
 from ...domain.entities import CacheEntry
@@ -791,7 +810,7 @@ class ReadFullUseCase:
 ```
 
 ```python
-# src/application/services/read_summarize.py
+# src/application/services/use_cases/read_summarize.py
 from datetime import datetime, timezone
 from src.domain.interfaces import CacheRepositoryInterface, ProviderInterface, TextProcessingInterface
 from src.domain.entities import CacheEntry
@@ -842,102 +861,95 @@ class ReadSummarizeUseCase:
 ```
 
 ```python
-# src/application/use_cases/read_chunks.py
-from datetime import datetime, timezone
-from ...domain.interfaces import ProviderInterface, CacheRepositoryInterface, LLMEngineInterface
-from ...domain.entities import Chunk, CacheEntry
-from ...domain.exceptions import ValidationError
-from ...infrastructure.builders.cache_entry import CacheEntryBuilder
+# src/application/services/use_cases/read_chunks.py
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from src.domain.entities import CacheEntry, Chunk
+from src.domain.exceptions import ValidationError
+from src.domain.interfaces import (
+    CacheRepositoryInterface,
+    ProviderInterface,
+    TokenizerInterface,
+)
+from src.infrastructure.builders.cache_entry import CacheEntryBuilder
 
 MAX_CHUNK_TOKENS = 500
 
+
 class ReadChunksUseCase:
-    def __init__(self, provider: ProviderInterface, cache: CacheRepositoryInterface, llm: LLMEngineInterface):
+    """Divide texto en chunks usando RecursiveCharacterTextSplitter y los guarda en caché."""
+
+    def __init__(
+        self,
+        provider: ProviderInterface,
+        cache: CacheRepositoryInterface,
+        tokenizer: TokenizerInterface,
+    ) -> None:
         self._provider = provider
         self._cache = cache
-        self._llm = llm
+        self._tokenizer = tokenizer
+        self._splitter = RecursiveCharacterTextSplitter(
+            chunk_size=MAX_CHUNK_TOKENS,
+            length_function=tokenizer.count_tokens,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
 
-    def execute(self, item_id: str, provider_name: str, chunk_indices: list[int] | None = None) -> list[Chunk]:
-        # 1. PRIMERO: Ir al proveedor para obtener contenido fresco
+    def execute(
+        self,
+        item_id: str,
+        provider_name: str,
+        chunk_indices: list[int] | None = None,
+    ) -> list[Chunk]:
         item = self._provider.get_item(item_id, self._provider._config)
-
-        # 2. Buscar en caché por content_hash + tool
-        cached = self._cache.lookup(item_id, provider_name, item.content_hash, "read_chunks")
-        if cached:
-            chunks = self._deserialize_chunks(cached)
-        else:
-            # 3. CACHE MISS: Dividir en chunks
-            chunks = self._split_into_chunks(item.raw_content)
-
-            # 4. Guardar cada chunk en caché
-            for chunk in chunks:
-                entry = (
-                    CacheEntryBuilder()
-                    .for_item(item)
-                    .with_tool("read_chunks")
-                    .with_content(chunk.content)
-                    .with_metadata(
-                        chunk_index=chunk.chunk_index,
-                        total_chunks=chunk.total_chunks,
-                        timestamp=datetime.now(timezone.utc).isoformat(),
-                    )
-                    .build()
-                )
-                self._cache.store(entry)
-
-        # 5. Filtrar por índices si se solicitaron
-        return self._filter_by_indices(chunks, chunk_indices)
-
-    def _split_into_chunks(self, content: str) -> list[Chunk]:
-        """Divide el contenido respetando límites de oración; cada chunk <= 500 tokens."""
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+', content)
-        chunks: list[Chunk] = []
-        current_sentences: list[str] = []
-        current_tokens = 0
-
-        for sentence in sentences:
-            sentence_tokens = self._llm.count_tokens(sentence)
-            if current_tokens + sentence_tokens > MAX_CHUNK_TOKENS and current_sentences:
-                chunk_text = " ".join(current_sentences)
-                chunks.append(Chunk(
-                    chunk_index=len(chunks) + 1,
-                    total_chunks=0,  # se actualiza al final
-                    content=chunk_text,
-                    token_count=current_tokens,
-                ))
-                current_sentences = [sentence]
-                current_tokens = sentence_tokens
-            else:
-                current_sentences.append(sentence)
-                current_tokens += sentence_tokens
-
-        if current_sentences:
-            chunk_text = " ".join(current_sentences)
-            chunks.append(Chunk(
-                chunk_index=len(chunks) + 1,
-                total_chunks=0,
-                content=chunk_text,
-                token_count=current_tokens,
-            ))
-
-        total = len(chunks)
-        for chunk in chunks:
-            chunk.total_chunks = total
+        chunks = self._get_or_generate_chunks(item, provider_name)
+        if chunk_indices is not None:
+            return self._filter_by_indices(chunks, chunk_indices)
         return chunks
 
+    def _get_or_generate_chunks(self, item, provider_name: str) -> list[Chunk]:
+        cached = self._cache.lookup(item.item_id, provider_name, item.content_hash, "read_chunks")
+        if cached:
+            return self._deserialize_chunks(cached)
+        return self._create_and_cache_chunks(item, provider_name)
+
+    def _create_and_cache_chunks(self, item, provider_name: str) -> list[Chunk]:
+        texts = self._splitter.split_text(item.raw_content)
+        chunks = [
+            Chunk(
+                chunk_index=i + 1,
+                total_chunks=len(texts),
+                content=text,
+                token_count=self._tokenizer.count_tokens(text),
+            )
+            for i, text in enumerate(texts)
+        ]
+        for chunk in chunks:
+            self._store_chunk(item, chunk)
+        return chunks
+
+    def _store_chunk(self, item, chunk: Chunk) -> None:
+        entry = (
+            CacheEntryBuilder()
+            .for_item(item)
+            .with_tool("read_chunks")
+            .with_content(chunk.content)
+            .with_metadata(chunk_index=chunk.chunk_index, total_chunks=chunk.total_chunks)
+            .build()
+        )
+        self._cache.store(entry)
+
     def _deserialize_chunks(self, cached: CacheEntry) -> list[Chunk]:
-        # En implementación real, recuperar todos los chunks de ChromaDB por item_id+hash
         return []
 
-    def _filter_by_indices(self, chunks: list[Chunk], indices: list[int] | None) -> list[Chunk]:
-        if not indices:
-            return chunks
+    def _filter_by_indices(self, chunks: list[Chunk], indices: list[int]) -> list[Chunk]:
+        self._validate_indices(chunks, indices)
+        return [c for c in chunks if c.chunk_index in indices]
+
+    def _validate_indices(self, chunks: list[Chunk], indices: list[int]) -> None:
         total = len(chunks)
         for idx in indices:
             if not (1 <= idx <= total):
                 raise ValidationError(f"chunk_index {idx} inválido. Índices válidos: 1 a {total}")
-        return [c for c in chunks if c.chunk_index in indices]
 ```
 
 ---
@@ -1190,12 +1202,12 @@ def _build_doc_id(entry: CacheEntry) -> str:
 
 ---
 
-## Infrastructure Layer: Prompts LangChain
+## Infrastructure Layer: Templates Prompts
 
 Los prompts se definen como constantes reutilizables usando `ChatPromptTemplate.from_messages()` con roles explícitos `system`/`human` (patrón LCEL moderno). Esto garantiza separación de responsabilidades, validación de variables en tiempo de construcción y compatibilidad con cualquier modelo de chat.
 
 ```python
-# src/infrastructure/llm/prompts.py
+# src/infrastructure/templates_prompts/summarize.py
 from langchain_core.prompts import ChatPromptTemplate
 
 SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
@@ -1254,37 +1266,114 @@ class GeminiLLMEngine(LLMEngineInterface):
 
 ---
 
-## Infrastructure Layer: Summarized
+## Infrastructure Layer: TiktokenTokenizer
 
-Implementa `TextProcessingInterface`. Recibe un `LLMEngineInterface` y el template de prompt, construye la chain LCEL internamente.
+Implementa `TokenizerInterface`. Usa tiktoken para contar tokens con encoding configurable vía variable de entorno.
 
 ```python
-# src/infrastructure/llm/summarized.py
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+# src/infrastructure/tools/tokenizer.py
+import tiktoken
 
-from src.domain.exceptions import LLMError
+from src.domain.interfaces import TokenizerInterface
+
+
+class TiktokenTokenizer(TokenizerInterface):
+    def __init__(self, encoding_name: str = "cl100k_base") -> None:
+        self._encoding = self._get_encoding(encoding_name)
+
+    @staticmethod
+    def _get_encoding(model: str) -> tiktoken.Encoding:
+        try:
+            return tiktoken.encoding_for_model(model)
+        except KeyError:
+            return tiktoken.get_encoding("cl100k_base")
+
+    def count_tokens(self, text: str) -> int:
+        return len(self._encoding.encode(text))
+```
+
+**Variable de entorno:**
+```
+TOKENIZER_ENCODING=cl100k_base
+```
+
+---
+
+## Infrastructure Layer: Summarizer
+
+Patrón Map-Reduce para resumen de textos largos. Divide en chunks, resume cada uno, y combina en un resumen final coherente.
+
+```python
+# src/infrastructure/tools/summarizer/summarizer_engine.py
+class Summarizer:
+    def __init__(self, llm, tokenizer: TokenizerInterface, chunk_size: int = 500):
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+        self._llm = llm
+        self._tokenizer = tokenizer
+        self._chunk_size = chunk_size
+        self._splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            # LangChain llama internamente: length_function(texto) → int
+            length_function=tokenizer.count_tokens,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+
+    # ════════ ZONA PÚBLICA ════════
+
+    def summarize(self, content: str, max_tokens: int) -> str:
+        chunks = self._splitter.split_text(content)
+        if len(chunks) == 1:
+            return self._summarize_single(chunks[0], max_tokens)
+        return self._map_reduce(chunks, max_tokens)
+
+    # ════════ ZONA PRIVADA ════════
+
+    def _summarize_single(self, content: str, max_tokens: int) -> str:
+        return self._invoke(SUMMARIZE_MAP_PROMPT, content, max_tokens)
+
+    def _map_reduce(self, chunks: list[str], max_tokens: int) -> str:
+        partial = [
+            self._summarize_single(c, max_tokens // len(chunks))
+            for c in chunks
+        ]
+        combined = "\n\n".join(partial)
+        return self._invoke(SUMMARIZE_REDUCE_PROMPT, combined, max_tokens)
+
+    def _invoke(self, prompt, content: str, max_tokens: int) -> str:
+        try:
+            formatted = prompt.invoke({"content": content, "max_tokens": max_tokens})
+            return StrOutputParser().invoke(self._llm.invoke(formatted))
+        except Exception as e:
+            raise LLMError(f"Error al generar resumen: {e}") from e
+```
+
+**Flujo Map-Reduce:**
+1. **Split:** Dividir texto en chunks de 500 tokens
+2. **Map:** Resumir cada chunk individualmente
+3. **Reduce:** Combinar resúmenes parciales en uno final
+
+---
+
+## Infrastructure Layer: Summarized (actualizado)
+
+Implementa `TextProcessingInterface`. Usa `Summarizer` para el proceso de resumen map-reduce.
+
+```python
+# src/infrastructure/tools/summarizer/summarize.py
 from src.domain.interfaces import LLMEngineInterface, TextProcessingInterface
 
 
 class Summarized(TextProcessingInterface):
-    def __init__(
-        self,
-        engine_llm: LLMEngineInterface,
-        prompt_template: ChatPromptTemplate,
-    ) -> None:
+    def __init__(self, engine_llm: LLMEngineInterface, summarizer):
         self._llm = engine_llm.llm
         self._embeddings = engine_llm.embeddings
-        self._chain = prompt_template | self._llm | StrOutputParser()
+        self._summarizer = summarizer
+
+    # ════════ ZONA PÚBLICA ════════
 
     def summarize(self, content: str, max_tokens: int) -> str:
-        try:
-            return self._chain.invoke({
-                "content": content,
-                "max_tokens": max_tokens,
-            })
-        except Exception as e:
-            raise LLMError(f"Error al generar resumen: {e}") from e
+        return self._summarizer.summarize(content, max_tokens)
 
     def count_tokens(self, text: str) -> int:
         return self._llm.get_num_tokens(text)

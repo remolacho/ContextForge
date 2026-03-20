@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.application.services.read_chunks import MAX_CHUNK_TOKENS, ReadChunksUseCase
+from src.application.services.use_cases.read_chunks import MAX_CHUNK_TOKENS, ReadChunksUseCase
 from src.domain.entities import ContextItem
 
 
@@ -18,7 +18,7 @@ def mock_provider():
         description="Description",
         comments=[],
         custom_fields={},
-        raw_content="",
+        raw_content="First sentence. Second sentence. Third sentence.",
         content_hash="abc123",
     )
     provider.get_item.return_value = item
@@ -32,23 +32,23 @@ def mock_cache():
 
 
 def mock_count_tokens(text: str) -> int:
-    """Mock que retorna tokens variables según longitud."""
-    return max(50, len(text) % 100)
+    """Mock que retorna tokens pequeños para permitir splitting."""
+    return min(50, len(text.split()))  # Max 50 tokens por mock
 
 
 @pytest.fixture
-def mock_summarized():
-    summarized = MagicMock()
-    summarized.count_tokens.side_effect = mock_count_tokens
-    return summarized
+def mock_tokenizer():
+    tokenizer = MagicMock()
+    tokenizer.count_tokens.side_effect = mock_count_tokens
+    return tokenizer
 
 
 @pytest.fixture
-def use_case(mock_provider, mock_cache, mock_summarized):
+def use_case(mock_provider, mock_cache, mock_tokenizer):
     return ReadChunksUseCase(
         provider=mock_provider,
         cache=mock_cache,
-        summarized=mock_summarized,
+        tokenizer=mock_tokenizer,
     )
 
 
@@ -80,10 +80,10 @@ def test_chunks_preserve_content():
     cache = MagicMock()
     cache.lookup.return_value = None
 
-    summarized = MagicMock()
-    summarized.count_tokens.return_value = 50
+    tokenizer = MagicMock()
+    tokenizer.count_tokens.return_value = 50
 
-    use_case = ReadChunksUseCase(provider=provider, cache=cache, summarized=summarized)
+    use_case = ReadChunksUseCase(provider=provider, cache=cache, tokenizer=tokenizer)
     chunks = use_case.execute("1", "youtrack")
 
     reconstructed = " ".join(chunk.content for chunk in chunks)

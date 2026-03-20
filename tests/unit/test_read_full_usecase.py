@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from src.application.use_cases.read_full import ReadFullUseCase
+from src.application.services.use_cases.read_full import ReadFullUseCase
 from src.domain.entities import CacheEntry, ContextItem
 
 

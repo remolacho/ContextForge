@@ -24,7 +24,7 @@ def cache(mock_client, mock_collection):
 
 
 def test_lookup_cache_hit(cache, mock_collection):
-    """Cuando ChromaDB retorna un documento, lookup() debe retornar CacheEntry con from_cache=True."""
+    """lookup() retorna CacheEntry con from_cache=True cuando ChromaDB tiene documento."""
     mock_collection.get.return_value = {
         "documents": ["contenido cacheado"],
         "metadatas": [{"timestamp": "2026-01-01"}],
@@ -60,7 +60,7 @@ def test_store_calls_upsert(cache, mock_collection):
 
 
 def test_invalidate_calls_delete(cache, mock_collection):
-    """invalidate() debe llamar a ChromaDB.delete() con los filtros item_id, provider_name y tool."""
+    """invalidate() llama a ChromaDB.delete() con item_id, provider_name y tool."""
     cache.invalidate("1", "youtrack", "read_full")
     mock_collection.delete.assert_called_once_with(
         where={"item_id": "1", "provider_name": "youtrack", "tool": "read_full"}
