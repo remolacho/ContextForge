@@ -1,3 +1,7 @@
+---
+description: 
+---
+
 # Workflow: Inicialización
 
 ## Pasos
@@ -22,6 +26,7 @@
    - Opciones:
      - Ruta de archivo local (ej: `.kiro/specs/contextforge/tasks.md`)
      - URL de YouTrack (ej: `https://communities.youtrack.cloud/issue/MCF-XXX`)
+   - Importante: no muestres rutas el usaurio dara la ruta de la tarea, solo realiza la pregunta
 
 5. **Continuar a task_source_workflow**
    - Si es archivo: listar tareas y solicitar selección
