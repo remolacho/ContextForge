@@ -2,26 +2,64 @@
 
 ## Pasos
 
-1. **Squash commits**
-   - `git reset --soft $(git merge-base HEAD origin/<base>)`
-   - Un solo commit con mensaje descriptivo
+### 1. Squash Commits
 
-2. **Push**
-   - `git push --force-with-lease`
+- Ejecutar: `git reset --soft $(git merge-base HEAD origin/<base>)`
+- Crear UN solo commit
+- Usar mensaje según `.agents/templates/commit_template.md`
+- Formato: `{MCF-XXX}: descripción corta`
 
-3. **Crear PR**
-   - Usar `gh pr create`
-   - Título incluye ID de tarea
-   - Body con resumen y verificación
+### 2. Push
 
-4. **Actualizar YouTrack**
-   - **Sprint:** https://communities.youtrack.cloud/agiles/195-1/current
-   - Usar `youtrack_update_issue`
-   - Agregar link del PR
-   - Agregar comentario con validación
+- Ejecutar: `git push --force-with-lease`
 
-5. **Merge (opcional)**
-   - Preguntar: "¿Quieres cerrar la rama y hacer merge?"
-   - Si confirma: `gh pr merge`
-   - Eliminar rama feature
-   - Cerrar tarea en YouTrack
+### 3. Crear PR
+
+- Determinar rama base según tipo de rama:
+  - `feature/*` → base: `development`
+  - `hotfix/*` → base: `main`
+- Usar herramienta `gh pr create`
+- Usar `.agents/templates/pr_template.md`
+- Título incluye ID de tarea
+- Body con: Summary, Changes, Verification, Links
+- **Retornar al usuario:**
+  - URL del PR creado
+  - Rama base (development o main)
+  - Cantidad de commits (debe ser 1 para squash)
+
+### 4. Agregar comentario en YouTrack
+
+- Usar herramienta `youtrack_add_issue_comment`
+- Agregar link del PR y validación:
+  - Lint: passed
+  - Typecheck: passed
+  - Tests: X passed
+- **NO modificar la descripción de la tarea**
+
+### 5. Merge (opcional)
+
+- Preguntar: "¿Quieres cerrar la rama y hacer merge?"
+- Si confirma:
+  - `gh pr merge`
+  - Eliminar rama feature
+  - **Actualizar estado YouTrack a "Hecho" (Fixed/Done)**
+  - Usar herramienta `youtrack_update_issue`
+  - Cambiar estado a "Hecho" o "Fixed"
+
+## Confirmaciones
+
+| Paso | Pregunta | Respuesta |
+|------|----------|-----------|
+| Commit | "¿Hacemos el commit?" | "si" / "no" |
+| Push | "¿Hacemos push?" | "si" / "no" |
+| PR | "¿Creamos el PR?" | "si" / "no" |
+| YouTrack | "¿Actualizamos YouTrack?" | "si" / "no" |
+| Merge | "¿Quieres hacer merge?" | "si" / "no" |
+
+## Flujo Completo
+
+```
+1. Commit → 2. Push → 3. PR → 4. YouTrack → 5. Merge (opcional)
+```
+
+Cada paso requiere confirmación antes de ejecutar.
