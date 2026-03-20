@@ -27,6 +27,44 @@ Si EXECUTE no está completado → Error: "Completa EXECUTE primero"
 
 ## Preparación Inicial
 
+### Verificar cambios disponibles
+
+```bash
+git fetch origin development
+git log origin/development..HEAD --oneline
+```
+
+**CASO 1: Sin cambios vs origin/development**
+
+Si la rama está vacía (sin commits nuevos):
+```
+============================================================
+ATENCIÓN: No hay cambios para finalizar
+============================================================
+La rama feature/MCF-XXX-descripcion no tiene commits nuevos
+vs origin/development.
+
+No se requiere:
+- Commit
+- Push
+- PR
+- Merge
+
+Acción: Cerrar rama
+1. git branch -d feature/MCF-XXX-descripcion
+============================================================
+```
+→ Ir a RESUMEN FINAL (sin pasos de commit/PR)
+→ **AGENT.md** elimina la sesión al validar flujos completados.
+
+---
+
+**CASO 2: Con cambios disponibles**
+
+Continuar con el flujo de preparación.
+
+---
+
 ### Leer sesión activa
 
 ```bash
@@ -345,7 +383,34 @@ PR: {URL_DEL_PR}
 
 ## PASO 5: Merge (opcional)
 
-### 5a: Solicitar confirmación
+### 5a: Verificar cambios antes de merge
+
+**OBLIGATORIO:** Verificar el estado de la rama antes de cualquier acción.
+
+```bash
+git fetch origin development
+git log origin/development..HEAD --oneline
+```
+
+**CASO 1: Sin cambios (rama vacía)**
+```
+La rama no tiene commits nuevos vs origin/development.
+No se requiere merge ni PR.
+```
+
+**ACCIÓN:** Ir directo a cerrar rama:
+1. git branch -d feature/MCF-XXX-descripcion
+2. Marcar sesión como completada
+3. Mostrar resumen final
+**NOTA:** AGENT.md elimina la sesión al validar flujos completados.
+
+---
+
+**CASO 2: Con cambios (commits para mergear)**
+
+Continuar con el flujo de merge.
+
+### 5b: Solicitar confirmación
 
 **ACCIÓN REQUERIDA:** Mostrar y ESPERAR respuesta.
 
@@ -362,7 +427,7 @@ ADVERTENCIA: Esto mergea a development/main.
 
 ---
 
-### 5b: Ejecutar merge
+### 5c: Ejecutar merge
 
 ```bash
 gh pr merge --squash
@@ -370,7 +435,7 @@ gh pr merge --squash
 
 ---
 
-### 5c: Eliminar rama feature
+### 5d: Eliminar rama feature
 
 ```bash
 git push origin --delete feature/MCF-XXX-descripcion
@@ -379,25 +444,35 @@ git branch -d feature/MCF-XXX-descripcion
 
 ---
 
-### 5d: Eliminar archivo de sesión
+### 5e: Marcar FINALIZE como completado
 
-```bash
-rm .context/session_*.md
+Actualizar sesión:
+
+```markdown
+### FINALIZE
+- [x] Commit
+- [x] Push
+- [x] Crear PR
+- [x] Comentar en YouTrack
+- [x] Merge
+- [x] Rama eliminada
 ```
+
+**NOTA:** La eliminación de sesión la maneja AGENT.md al validar que todos los flujos están completos.
 
 ---
 
-### 5e: Actualizar estado final
+### 5f: Actualizar estado final
 
 ```
-================================================================
-SESIÓN ELIMINADA
-================================================================
+============================================================
+FINALIZE COMPLETADO
+============================================================
 Tarea: MCF-XXX ✅
 Rama: feature/MCF-XXX-descripcion (eliminada)
 PR: mergeado ✅
-Sesión: eliminada ✅
-================================================================
+============================================================
+NOTA: AGENT.md elimina la sesión al validar flujos completados.
 ```
 
 ---

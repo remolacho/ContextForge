@@ -4,7 +4,7 @@
 
 Al iniciar con `start`:
 1. Verificar sesión activa en `.context/session_*.md`
-2. Si existe → preguntar retomar o nueva
+2. Si existe → mostrar resumen, preguntar retomar o nueva
 3. Si no existe → solicitar fuente de tarea y crear sesión
 
 ## Rol
@@ -38,17 +38,40 @@ Los archivos de sesión se crean en `.context/` con el formato:
 session_YYYYMMDD_HHMMSS.md
 ```
 
+### Comandos de sesión
+
+```bash
+# Obtener sesión más reciente
+SESSION_FILE=$(ls -t .context/session_*.md 2>/dev/null | head -1)
+
+# Crear sesión con timestamp actual
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+SESSION_FILE=".context/session_${TIMESTAMP}.md"
+cp .agents/templates/session-template.md "$SESSION_FILE"
+```
+
 ### Flujo de `start`
 
 ```
-1. Buscar session_*.md en .context/
+1. Buscar session_*.md más reciente
+   SESSION=$(ls -t .context/session_*.md 2>/dev/null | head -1)
    │
    ├── Existe sesión activa
    │       ↓
-   │   Mostrar resumen de sesión
-   │   Preguntar: "¿Retomar o nueva?"
-   │       ├── "retomar" → Leer session, retomar flujo
-   │       └── "nueva" → Eliminar, crear nueva
+   │   Leer contenido
+   │   │
+   │   ├── Todos los flujos COMPLETADOS
+   │   │       ↓
+   │   │   Validar checks (lint, typecheck, tests)
+   │   │       ├── Checks OK → Eliminar sesión, "¡Tarea completada!"
+   │   │       └── Checks FALLAN → Mostrar errores, ofrecer retomar
+   │   │
+   │   └── Flujos INCOMPLETOS
+   │           ↓
+   │       Mostrar resumen de sesión
+   │       Preguntar: "¿Retomar o nueva?"
+   │           ├── "retomar" → Continuar desde flujo actual
+   │           └── "nueva" → rm session_*.md, crear nueva
    │
    └── No existe sesión
            ↓
@@ -57,6 +80,16 @@ session_YYYYMMDD_HHMMSS.md
        Crear session_YYYYMMDD_HHMMSS.md
            ↓
        Iniciar flujo INIT
+```
+
+### Actualizar sesión
+
+Después de cada paso completado, actualizar el archivo de sesión:
+```bash
+# Leer sesión actual
+SESSION=$(ls -t .context/session_*.md | head -1)
+
+# Editar con nuevo contenido usando edit tool
 ```
 
 ### Validación de flujos
@@ -68,6 +101,35 @@ Al iniciar FINALIZE → Verificar EXECUTE completado
 
 Si flujo anterior no completado:
 → Error: "Completa {FLUJO_ANTERIOR} primero"
+```
+
+### Validación de Finalización
+
+Cuando todos los flujos están COMPLETADOS:
+
+```
+1. Ejecutar make check (lint + typecheck + test)
+2. Si checks FALLAN:
+   → Mostrar errores
+   → Ofrecer retomar para corregir
+3. Si checks PASAN:
+   → Mostrar resumen final
+   → Eliminar sesión: rm .context/session_*.md
+   → Mostrar "¡Tarea completada!"
+```
+
+### Eliminación de Sesión
+
+La sesión se elimina cuando:
+1. FINALIZE está marcado como completado
+2. `make check` pasa exitosamente
+
+Comando:
+```bash
+SESSION=$(ls -t .context/session_*.md 2>/dev/null | head -1)
+if [ -n "$SESSION" ]; then
+    rm "$SESSION"
+fi
 ```
 
 ## Flujo de Trabajo
@@ -100,7 +162,7 @@ Si flujo anterior no completado:
 ┌───────────────────────────────────────┐
 │              EXECUTE                  │
 │       execute_workflow.md             │
-│   Esperar "next" ANTES de cada paso   │
+│   Esperar "next" ANTES de cada paso  │
 └───────────────────┬───────────────────┘
                     │
                     ▼
@@ -108,6 +170,13 @@ Si flujo anterior no completado:
 │             FINALIZE                  │
 │       finalize_workflow.md            │
 │   Confirmación antes de cada paso     │
+└───────────────────────────────────────┘
+                     │
+                     ▼
+┌───────────────────────────────────────┐
+│         VALIDAR CHECKS                │
+│   make check (luego de FINALIZE)      │
+│   Si pasa → Eliminar sesión          │
 └───────────────────────────────────────┘
 ```
 
