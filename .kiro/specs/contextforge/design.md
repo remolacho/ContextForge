@@ -461,19 +461,74 @@ class ToolCallRequest(BaseModel):
 # app/schemas/mcp_response.py
 from pydantic import BaseModel
 
+class ItemResponse(BaseModel):
+    index: int
+    content: str
+
 class ToolCallResponse(BaseModel):
-    content: str
-    from_cache: bool
+    items: list[ItemResponse]
+```
 
-class ChunkItem(BaseModel):
-    chunk_index: int
-    total_chunks: int
-    content: str
-    token_count: int
+---
 
-class ChunksResponse(BaseModel):
-    chunks: list[ChunkItem]
-    from_cache: bool
+## Ejemplos de Comunicación JSON (Protocolo MCP)
+
+Para facilitar la comprensión del flujo de datos entre el Agente de IA y ContextForge, a continuación se presentan los objetos JSON reales que se intercambian:
+
+### 1. Inicialización (`initialize`)
+Este mensaje es enviado por el cliente para configurar la sesión y los proveedores disponibles.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-03-26",
+    "clientInfo": {
+      "config": {
+        "providers": {
+          "youtrack": {
+            "token": "mi-token-secreto-123",
+            "base_url": "https://mi-empresa.youtrack.cloud"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 2. Llamada a Herramienta (`tools/call`)
+Este mensaje solicita la ejecución de una herramienta específica (ej. `read_full`).
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "read_full",
+    "arguments": {
+      "item_id": "TICKET-101",
+      "provider_name": "youtrack"
+    }
+  }
+}
+```
+
+### 3. Respuesta del Servidor (`ToolCallResponse`)
+Formato de respuesta que el servidor devuelve al agente para que este lo procese.
+
+```json
+{
+  "items": [
+    {
+      "index": 1,
+      "content": "Contenido del ticket recuperado y procesado..."
+    }
+  ]
+}
 ```
 
 ---
