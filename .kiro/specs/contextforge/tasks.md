@@ -440,7 +440,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
       - Clase `MCPController(ApplicationController)` con constructor que recibe `router`, `context_service` y `session_manager`
       - Registrar `POST /` que despacha según `request.method`:
         - `"initialize"` → `_handle_initialize`: parsear `params.clientInfo.config` como `SessionConfig`, llamar `session_manager.store(session_id, config)`, retornar respuesta MCP con `protocolVersion`, `capabilities: {}` y `serverInfo: {"name": "contextforge", "version": "1.0.0"}`
-        - `"tools/list"` → `_handle_tools_list`: retornar lista de las tres herramientas (`read_full`, `read_summarize`, `read_chunks`) con descripciones que guíen al agente a elegir la correcta según su necesidad
+        - `"tools/list"` → `_handle_tools_list`: retornar lista de las tres herramientas (`read_full`, `read_summarize`, `read_chunks`) con sus descripciones precisas y el `inputSchema` JSON (según la sección 'Definición de Herramientas' del design.md) para guiar al agente AI a elegir la correcta según su necesidad.
         - `"tools/call"` → `_handle_tool_call`: obtener sesión con `session_manager.get(session_id)`, despachar a `context_service.read_full/read_summarize/read_chunks` según `params.name`, serializar y retornar la respuesta
         - Cualquier otro método → retornar `JSONResponse({"message": "Método no soportado"}, status_code=400)`
       - Registrar `GET /` que retorna `{"message": "SSE endpoint activo"}` (stub para compatibilidad con spec MCP 2025-03-26)

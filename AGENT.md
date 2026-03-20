@@ -104,7 +104,7 @@ Desarrollador Senior Python con experiencia en:
 
 1. `init` → leer workflow `init_workflow.md`
 2. Fuente tarea → leer workflow `task_source_workflow.md` ANTES de preguntar
-3. Seleccionar tarea → listar opciones, esperar selección
+3. Seleccionar tarea → listar TODAS las tareas con número, luego preguntar "¿Qué número de tarea deseas tomar?" con opciones [1-16] (NO predefinir respuestas)
 4. Crear en YouTrack → SOLO cuando usuario selecciona
 5. Preguntar rama → esperar respuesta
 6. Planificación → leer workflow `plan_workflow.md`
