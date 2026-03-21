@@ -2,70 +2,15 @@
 
 ## Regla Principal
 
-**Cada paso requiere confirmación explícita antes de ejecutar. NO continuar sin esperar respuesta.**
-**Este workflow es OBLIGATORIO al terminar la ejecución de una tarea.**
-**Squash se hace vía GitHub (no usar `git reset --soft`).**
+**6 pasos en orden. Cada uno espera "si" para continuar.**
 
 ---
 
-## Validación de Sesión
+## Validación
 
-### Verificar EXECUTE completado
+Verificar EXECUTE completado en sesión.
 
-Antes de iniciar, verificar en sesión:
-
-```markdown
-| Flujo | Estado |
-|-------|--------|
-| EXECUTE | ✅ |
-| FINALIZE | 🔄 |
-```
-
-Si EXECUTE no está completado → Error: "Completa EXECUTE primero"
-
----
-
-## Preparación Inicial
-
-### Leer sesión activa
-
-```bash
-ls -la .context/session_*.md | tail -1
-```
-
-Mostrar resumen:
-```
-============================================================
-FINALIZACIÓN DE SESIÓN
-============================================================
-Tarea: MCF-XXX
-Rama: feature/MCF-XXX-descripcion
-
-Flujo completo:
-[ ] 1. Commit
-[ ] 2. Push
-[ ] 3. Verificar commits (squash si necesario)
-[ ] 4. Crear PR
-[ ] 5. Comentar YouTrack
-[ ] 6. Merge (opcional)
-============================================================
-```
-
----
-
-## Actualizar sesión al iniciar FINALIZE
-
-```markdown
-## Flujos
-
-| Flujo | Estado | Paso Actual |
-|-------|--------|-------------|
-| INIT | ✅ | Completado |
-| TASK_SOURCE | ✅ | Completado |
-| PLAN | ✅ | Completado |
-| EXECUTE | ✅ | Completado |
-| FINALIZE | 🔄 | En progreso |
-```
+Si no completado → Error: "Completa EXECUTE primero"
 
 ---
 
@@ -73,140 +18,49 @@ Flujo completo:
 
 ### 1a: Mostrar archivos modificados
 
-Ejecutar:
 ```bash
 git status --porcelain
 ```
 
-Mostrar solo archivos relevantes (excluir archivos de otros features):
 ```
-============================================================
 PASO 1 DE 6: Commit
-============================================================
 
-Archivos modificados/nuevos:
+Archivos modificados:
 - archivo1.py
 - archivo2.py
-
-¿Incluir estos archivos en el commit?
 ```
 
----
+### 1b: Esperar "si"
 
-### 1b: Solicitar confirmación
+**Esperar "si" o "abort".**
 
-**ACCIÓN REQUERIDA:** Mostrar y ESPERAR respuesta.
-
-```
-¿Hacemos commit de estos archivos? (si/no)
-```
-
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a 1c |
-| "no" | Solicitar cuáles archivos incluir |
-| "abort" | Abortar gesamten workflow |
-
----
-
-### 1c: Leer template de commit
-
-- Leer `.agents/templates/commit_template.md`
-- Leer sesión activa para obtener:
-  - ID de tarea (MCF-XXX)
-  - Descripción de lo realizado en EXECUTE
-
----
-
-### 1d: Generar y confirmar mensaje
-
-Mostrar mensaje propuesto:
-```
-Mensaje de commit propuesto:
-
-MCF-XXX: descripción corta de la tarea
-
-- Cambio 1 realizado en EXECUTE
-- Cambio 2 realizado en EXECUTE
-- Tests agregados/verificados
-```
-
-**ACCIÓN REQUERIDA:** ESPERAR respuesta.
-
-```
-¿Confirmamos este mensaje? (si/no/modificar)
-```
-
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a 1e |
-| "modificar" | Solicitar nuevo mensaje |
-| "no" | Cancelar, volver a espera |
-
----
-
-### 1e: Ejecutar commit
+### 1c: Commit
 
 ```bash
-git add <archivos_confirmados>
+git add <archivos>
 git commit -m "MCF-XXX: mensaje"
-```
-
----
-
-### 1f: Actualizar sesión
-
-```markdown
-### FINALIZE
-- [x] Commit (hash)
-- [ ] Push
-- [ ] Verificar commits
-- [ ] Crear PR
-- [ ] Comentar YouTrack
-- [ ] Merge
 ```
 
 ---
 
 ## PASO 2: Push
 
-### 2a: Solicitar confirmación
+### 2a: Mostrar
 
 ```
-============================================================
 PASO 2 DE 6: Push
-============================================================
-
-¿Hacemos push? (si/no)
 
 Rama: feature/MCF-XXX-descripcion
 ```
 
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a 2b |
-| "no" | Abortar gesamten workflow |
+### 2b: Esperar "si"
 
----
+**Esperar "si" o "abort".**
 
-### 2b: Ejecutar push
+### 2c: Push
 
 ```bash
 git push --set-upstream origin feature/MCF-XXX-descripcion
-```
-
----
-
-### 2c: Actualizar sesión
-
-```markdown
-### FINALIZE
-- [x] Commit
-- [x] Push
-- [ ] Verificar commits
-- [ ] Crear PR
-- [ ] Comentar YouTrack
-- [ ] Merge
 ```
 
 ---
@@ -220,221 +74,77 @@ git log origin/development..HEAD --oneline
 ```
 
 ```
-============================================================
 PASO 3 DE 6: Verificar Commits
-============================================================
 
 Commits desde origin/development:
-- abc1234: Mensaje del commit 1
-- def5678: Mensaje del commit 2
-- ghi9012: Mensaje del commit 3
-
-Total: N commits
+- abc1234: Mensaje 1
+- def5678: Mensaje 2
 ```
 
----
-
-### 3b: Verificar si hay más de 1 commit
-
-**SI solo hay 1 commit:**
-```
-✅ Solo 1 commit - listo para PR
-```
-→ Ir directamente a PASO 4
-
-**SI hay más de 1 commit:**
-```
-⚠️ IMPORTANTE: Los PR deben tener un solo commit.
-
-Opciones:
-1. Squash automático vía GitHub (recomendado)
-2. Crear nueva rama limpia desde development
-```
-
----
-
-### 3c: Solicitar acción si hay múltiples commits
+### 3b: Si más de 1 commit
 
 ```
-¿Quieres hacer squash de los commits? (si/no)
-
-Opción 1 (si): Squash automático vía GitHub al crear PR
-Opción 2 (no): Continuar con múltiples commits (no recomendado)
+⚠️ IMPORTANTE: PR debe tener 1 commit.
+Squash se hará vía GitHub automáticamente.
 ```
 
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a PASO 4 (GitHub hará squash automático) |
-| "no" | ADVERTENCIA: PR tendrá múltiples commits |
+### 3c: Esperar "si"
 
----
-
-### 3d: Actualizar sesión
-
-```markdown
-### FINALIZE
-- [x] Commit
-- [x] Push
-- [x] Verificar commits (N commits, squash vía GitHub)
-- [ ] Crear PR
-- [ ] Comentar YouTrack
-- [ ] Merge
-```
+**Esperar "si" o "abort".**
 
 ---
 
 ## PASO 4: Crear PR
 
-### 4a: Generar contenido del PR
+### 4a: Generar contenido
 
-**Fuentes:**
-- Leer `.agents/templates/pr_template.md`
-- Leer sesión activa para extraer:
-  - ID de tarea
-  - Descripción de EXECUTE
-  - Archivos modificados
+Título: `MCF-XXX: título de la tarea`
 
-**Título:**
-```
-MCF-XXX: título de la tarea
-```
-
-**Descripción (generada dinámicamente):**
+Descripción generada:
 ```
 ## Summary
 
-- [punto 1 de lo realizado]
-- [punto 2 de lo realizado]
-- Tests agregados/verificados
-
-## Changes
-
-| Tipo | Archivos |
-|------|----------|
-| Creados | archivo1.py |
-| Modificados | archivo2.py |
-
-## Verification
-
-| Verificación | Estado |
-|--------------|--------|
-| Lint (`make lint`) | ✅ passed |
-| Typecheck (`make typecheck`) | ✅ passed |
-| Tests (`make test`) | ✅ passed |
+- Cambio realizado
+- Tests verificados
 
 ## Links
 
 | Recurso | URL |
 |---------|-----|
 | YouTrack | https://communities.youtrack.cloud/issue/MCF-XXX |
-| Sprint | https://communities.youtrack.cloud/agiles/195-1/current |
 ```
 
----
-
-### 4b: Mostrar PR preview
+### 4b: Mostrar preview
 
 ```
-============================================================
 PASO 4 DE 6: Crear PR
-============================================================
 
-Título:
-MCF-XXX: descripción de la tarea
-
-Descripción:
----
-[descripción generada arriba]
----
-
-Archivos:
-- archivo1.py
-- archivo2.py
-
-Commits: N (serán squash a 1 por GitHub)
-
+Título: MCF-XXX: título
 Base: development
 Head: feature/MCF-XXX-descripcion
 ```
 
----
+### 4c: Esperar "si"
 
-### 4c: Solicitar confirmación
+**Esperar "si" o "abort".**
 
-**ACCIÓN REQUERIDA:** ESPERAR respuesta.
-
-```
-¿Creamos el Pull Request con esta información? (si/no)
-```
-
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a 4d |
-| "no" | Solicitar modificaciones |
-
----
-
-### 4d: Ejecutar PR
+### 4d: Crear PR
 
 ```bash
 gh pr create \
-  --title "MCF-XXX: título de la tarea" \
-  --body "contenido de la descripción" \
+  --title "MCF-XXX: título" \
+  --body "descripción" \
   --base development \
   --head feature/MCF-XXX-descripcion
 ```
 
----
-
-### 4e: Mostrar resultado
-
-```
-============================================================
-✅ Pull Request creado exitosamente
-============================================================
-
-URL: https://github.com/remolacho/ContextForge/pull/N
-Base: development
-Head: feature/MCF-XXX-descripcion
-Commits: N → 1 (squash automático por GitHub)
-```
+Mostrar URL del PR.
 
 ---
 
-### 4f: Actualizar sesión
+## PASO 5: Comentar YouTrack
 
-```markdown
-### FINALIZE
-- [x] Commit
-- [x] Push
-- [x] Verificar commits
-- [x] Crear PR: https://github.com/.../pull/N
-- [ ] Comentar YouTrack
-- [ ] Merge
-```
-
----
-
-## PASO 5: Comentar en YouTrack
-
-### 5a: Generar checklist de verificación
-
-**Fuentes:**
-- Leer sesión activa → extraer lo realizado en EXECUTE
-- Leer `.kiro/specs/contextforge/tasks.md` → extraer subtareas de la tarea
-
-```
-============================================================
-PASO 5 DE 6: Comentar en YouTrack
-============================================================
-
-MCF-XXX: https://communities.youtrack.cloud/issue/MCF-XXX
-PR: https://github.com/remolacho/ContextForge/pull/N
-```
-
----
-
-### 5b: Generar comentario
+### 5a: Generar comentario
 
 ```
 ## PR Creado
@@ -443,143 +153,68 @@ PR: {URL_DEL_PR}
 
 ## Resumen de Cambios
 
-- [x] Cambio 1 realizado
-- [x] Cambio 2 realizado
-- [x] Tests agregados/verificados
+- [x] Cambio realizado
+- [x] Tests verificados
 
 ## Verificación
 
 | Verificación | Estado |
 |-------------|--------|
-| Lint (`make lint`) | ✅ passed |
-| Typecheck (`make typecheck`) | ✅ passed |
-| Tests (`make test`) | ✅ passed |
+| Lint | ✅ passed |
+| Typecheck | ✅ passed |
+| Tests | ✅ passed |
+```
 
-## Checklist de Tarea
+### 5b: Esperar "si"
 
-| Subtarea | Estado |
-|----------|--------|
-| Subtarea 1.1 | ✅ completada |
-| Subtarea 1.2 | ✅ completada |
+**Esperar "si" o "abort".**
+
+### 5c: Comentar
+
+Usar `youtrack_add_issue_comment` con el texto generado.
 
 ---
 
-⚠️ ¿Se cumplen todos los criterios de la tarea?
-```
+## PASO 6: Merge
 
----
-
-### 5c: Solicitar confirmación
-
-**ACCIÓN REQUERIDA:** ESPERAR respuesta.
+### 6a: Mostrar
 
 ```
-¿Agregamos este comentario en YouTrack? (si/no)
+PASO 6 DE 6: Merge
+
+¿Hacemos merge del PR?
+ADVERTENCIA: Esto mergea a development.
 ```
 
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a 5d |
-| "no" | Ir a RESUMEN FINAL |
+### 6b: Esperar "si"
 
----
+**Esperar "si" o "no".**
 
-### 5d: Ejecutar comentario
-
-Usar herramienta `youtrack_add_issue_comment`:
-- Issue ID: MCF-XXX
-- Texto: comentario generado en 5b
-
----
-
-### 5e: Actualizar sesión
-
-```markdown
-### FINALIZE
-- [x] Commit
-- [x] Push
-- [x] Verificar commits
-- [x] Crear PR
-- [x] Comentar YouTrack
-- [ ] Merge
-```
-
----
-
-## PASO 6: Merge (opcional)
-
-### 6a: Solicitar confirmación
-
-```
-============================================================
-PASO 6 DE 6: Merge (opcional)
-============================================================
-
-¿Hacemos merge del PR? (si/no)
-
-ADVERTENCIA: Esto mergea a development/main.
-```
-
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Continuar a 6b |
-| "no" | Ir a RESUMEN FINAL |
-
----
-
-### 6b: Ejecutar merge
+### 6c: Si "si"
 
 ```bash
 gh pr merge --squash
-```
-
----
-
-### 6c: Eliminar rama feature
-
-```bash
 git push origin --delete feature/MCF-XXX-descripcion
 git branch -d feature/MCF-XXX-descripcion
-```
-
----
-
-### 6d: Eliminar archivo de sesión
-
-```bash
 rm .context/session_*.md
 ```
 
----
+### 6d: Si "no"
 
-## RESUMEN FINAL
-
-```
-============================================================
-✅ WORKFLOW DE FINALIZACIÓN COMPLETADO
-============================================================
-
-Tarea: MCF-XXX
-Rama: feature/MCF-XXX-descripcion (eliminada)
-PR: https://github.com/remolacho/ContextForge/pull/N (mergeado ✅)
-YouTrack: comentado ✅
-
-Sesión eliminada.
-============================================================
-```
+Mantener sesión.
 
 ---
 
-## RESUMEN FINAL (sin merge)
+## Resumen Final
 
 ```
-============================================================
-FINALIZACIÓN PAUSADA
-============================================================
+================================================================
+✅ WORKFLOW COMPLETADO
+================================================================
 
 Tarea: MCF-XXX
 Rama: feature/MCF-XXX-descripcion
-PR: https://github.com/remolacho/ContextForge/pull/N
+PR: https://github.com/.../pull/N
 
 Pasos completados:
 [x] Commit
@@ -587,59 +222,21 @@ Pasos completados:
 [x] Verificar commits
 [x] Crear PR
 [x] Comentar YouTrack
+[x] Merge
 
-Pendiente:
-[ ] Merge (responde 'merge' cuando estés listo)
-
-Sesión guardada en: .context/session_*.md
-============================================================
+Sesión eliminada.
+================================================================
 ```
 
 ---
 
 ## Estados de Espera
 
-| Paso | ¿Espera? | Qué espera |
-|------|----------|------------|
-| 1. Commit | **SÍ** | "si" / "no" / "abort" |
-| 2. Push | **SÍ** | "si" / "no" |
-| 3. Commits | **SÍ** | "si" / "no" |
-| 4. PR | **SÍ** | "si" / "no" |
-| 5. YouTrack | **SÍ** | "si" / "no" |
-| 6. Merge | **SÍ** | "si" / "no" |
-
----
-
-## Reglas de Seguridad
-
-### ❌ NUNCA hacer
-- `git reset --soft` (borra historial y puede perder cambios)
-- `git reset --hard` (pierde cambios no commiteados)
-
-### ✅ SQUASH SEGURO
-El squash se hace automáticamente por GitHub al hacer merge con `--squash`.
-
----
-
-## Reanudar Finalización
-
-Si el usuario inicia `start` y hay sesión activa con FINALIZE incompleto:
-
-```
-============================================================
-SESIÓN ACTIVA ENCONTRADA
-============================================================
-Tarea: MCF-XXX
-Flujo: FINALIZE
-
-Pasos restantes:
-[ ] Merge
-
-¿Deseas retomar? (si/no)
-============================================================
-```
-
-| Respuesta | Acción |
-|-----------|--------|
-| "si" | Leer session_*.md, continuar desde donde quedó |
-| "no" | Volver al inicio |
+| Paso | Espera |
+|------|--------|
+| 1. Commit | "si" / "abort" |
+| 2. Push | "si" / "abort" |
+| 3. Verificar | "si" / "abort" |
+| 4. PR | "si" / "abort" |
+| 5. YouTrack | "si" / "abort" |
+| 6. Merge | "si" / "no" |
