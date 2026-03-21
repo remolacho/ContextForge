@@ -1,52 +1,50 @@
-# Sesión: {TAREA}
-Fecha: {FECHA}
-Hora: {HORA}
-Rama: {RAMA}
+# Sesión: 
 
-## Flujos
+Fecha: 
+Hora: 
+Rama: 
 
-| Flujo | Estado | Paso Actual |
-|-------|--------|-------------|
-| INIT | ⏳ | No iniciado |
-| TASK_SOURCE | ⏳ | No iniciado |
-| PLAN | ⏳ | No iniciado |
-| EXECUTE | ⏳ | No iniciado |
-| FINALIZE | ⏳ | No iniciado |
+## Flujo Fijo
 
-## Progreso
+| Paso | Estado | Descripción |
+|------|--------|-------------|
+| 1 | ⏳ | start - Buscar/Crear sesión |
+| 2 | ⏳ | INIT - Mostrar rol, skills |
+| 3 | ⏳ | TASK_SOURCE - Fuente de tarea |
+| 3a | ⏳ | Crear tarea en YouTrack (si es Archivo) |
+| 4 | ⏳ | Solicitar tipo de rama |
+| 5 | ⏳ | PLAN - Generar plan |
+| 6 | ⏳ | EXECUTE - Ejecutar pasos |
+| 7 | ⏳ | FINALIZE - Commit/Push/PR |
 
-### INIT
-- [ ] Mostrar rol
-- [ ] Listar skills
-- [ ] Mostrar workflows
-- [ ] Solicitar fuente de tarea
+## Detalles
 
-### TASK_SOURCE
-- [ ] Solicitar fuente ("Archivo" o "YouTrack")
-- [ ] Obtener información de tarea
-- [ ] Crear tarea en YouTrack (si es flujo Archivo)
-- [ ] Solicitar tipo de rama
+- **Fuente:** Archivo / YouTrack
+- **Tarea:** MCF-XXX
+- **Rama:** feature/MCF-XXX-descripcion / hotfix/MCF-XXX-descripcion
+- **Tipo de rama:** feature / hotfix
+
+## Ejecución
 
 ### PLAN
 - [ ] Leer plan_workflow.md
 - [ ] Generar plan
-- [ ] Solicitar confirmación
+- [ ] Esperar "next"
 
 ### EXECUTE
 - [ ] Leer execute_workflow.md
-- [ ] Ejecutar pasos
-  - [ ] Paso 1
-  - [ ] Paso 2
-  - [ ] Paso 3
+- [ ] Paso 1
+- [ ] Paso 2
+- [ ] Paso 3
 - [ ] Verificación final
 
 ### FINALIZE
-- [ ] Leer finalize_workflow.md
 - [ ] Commit
 - [ ] Push
+- [ ] Verificar commits
 - [ ] Crear PR
-- [ ] Comentar en YouTrack
-- [ ] Solicitar merge
+- [ ] Comentar YouTrack
+- [ ] Merge
 
 ## Notas
 

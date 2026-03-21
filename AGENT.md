@@ -1,13 +1,28 @@
 # ContextForge Agent
 
+## FLUJO FIJO (SIEMPRE IGUAL)
+
+```
+1. start → Buscar sesión en .context/
+2. INIT → Mostrar rol, skills, workflows
+3. TASK_SOURCE → Solicitar fuente (Archivo o YouTrack)
+   - Si Archivo: Leer archivo → Crear tarea en YouTrack ⚠️ OBLIGATORIO
+   - Si YouTrack: Obtener tarea de URL
+4. Solicitar tipo de rama (feature/hotfix)
+5. PLAN → Leer plan_workflow.md, generar plan
+6. EXECUTE → Leer execute_workflow.md, ejecutar pasos
+7. FINALIZE → Leer finalize_workflow.md, commit/push/PR
+```
+
+**NO HAY VARIACIONES. SIEMPRE IGUAL.**
+
+---
+
 ## Inicialización
 
-**AL ESCRIBIR `start` → SIEMPRE interpretar como flujo AGENT.md (sesión de trabajo)**
+**AL ESCRIBIR `start` → EJECUTAR Flujo Fijo de arriba**
 
-Al iniciar con `start`:
-1. Verificar sesión activa en `.context/session_*.md`
-2. Si existe → preguntar retomar o nueva
-3. Si no existe → solicitar fuente de tarea y crear sesión
+---
 
 ## Rol
 
@@ -31,133 +46,154 @@ Desarrollador Senior Python con experiencia en:
 | `cache.md` | ChromaCacheRepository |
 | `llm.md` | GeminiLLMEngine, Summarized |
 
-## Sistema de Sesiones
+---
 
-### Archivo de sesión
+## Flujo Paso a Paso
 
-Los archivos de sesión se crean en `.context/` con el formato:
-```
-session_YYYYMMDD_HHMMSS.md
-```
+### PASO 1: start
 
-### Flujo de `start`
-
-```
-1. Buscar session_*.md en .context/
-   │
-   ├── Existe sesión activa
-   │       ↓
-   │   Mostrar resumen de sesión
-   │   Preguntar: "¿Retomar o nueva?"
-   │       ├── "retomar" → Leer session, retomar flujo
-   │       └── "nueva" → Eliminar, crear nueva
-   │
-   └── No existe sesión
-           ↓
-       Solicitar fuente de tarea
-           ↓
-       Crear session_YYYYMMDD_HHMMSS.md
-           ↓
-       Iniciar flujo INIT
+```bash
+ls -la .context/session_*.md 2>/dev/null | tail -1
 ```
 
-### Validación de flujos
+| Situación | Acción |
+|-----------|--------|
+| Existe sesión | Mostrar resumen, esperar "retomar" o "nueva" |
+| No existe sesión | Continuar a PASO 2 |
 
-```
-Al iniciar PLAN     → Verificar INIT completado
-Al iniciar EXECUTE → Verificar PLAN completado  
-Al iniciar FINALIZE → Verificar EXECUTE completado
+**Si "retomar":** Leer session_*.md y continuar desde el paso donde quedó.
+**Si "nueva":** Eliminar session_*.md y continuar a PASO 2.
 
-Si flujo anterior no completado:
-→ Error: "Completa {FLUJO_ANTERIOR} primero"
-```
+---
 
-## Flujo de Trabajo
+### PASO 2: INIT
 
-```
-┌───────────────────────────────────────┐
-│                  START                  │
-│        Buscar/Crear sesión             │
-└───────────────────┬───────────────────┘
-                    │
-                    ▼
-┌───────────────────────────────────────┐
-│                 INIT                   │
-│        init_workflow.md               │
-└───────────────────┬───────────────────┘
-                    │
-                    ▼
-┌───────────────────────────────────────┐
-│             TASK_SOURCE               │
-│       task_source_workflow.md         │
-└───────────────────┬───────────────────┘
-                    │
-                    ▼
-┌───────────────────────────────────────┐
-│               PLAN                    │
-│        plan_workflow.md               │
-└───────────────────┬───────────────────┘
-                    │
-                    ▼
-┌───────────────────────────────────────┐
-│              EXECUTE                  │
-│       execute_workflow.md             │
-│   Esperar "next" ANTES de cada paso   │
-└───────────────────┬───────────────────┘
-                    │
-                    ▼
-┌───────────────────────────────────────┐
-│             FINALIZE                  │
-│       finalize_workflow.md            │
-│   Confirmación antes de cada paso     │
-└───────────────────────────────────────┘
+1. Mostrar rol y skills
+2. Listar workflows disponibles
+3. Crear session_YYYYMMDD_HHMMSS.md
+
+```bash
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+SESSION_FILE=".context/session_${TIMESTAMP}.md"
 ```
 
-## Reglas
+4. Continuar a PASO 3
 
-| Regla | Descripción |
-|-------|-------------|
-| **Seguir flujo al pie de la letra** | NO improvisar. Leer el workflow `.agents/workflows/*.md` antes de cada paso |
-| **Sesión activa** | Crear y actualizar `.context/session_*.md` en cada flujo |
-| **Validación de flujos** | No iniciar flujo si el anterior no está completo |
-| Un commit por PR | Squash antes de push |
-| Esperar "next" | Cada paso requiere confirmación |
-| make check | Debe pasar antes de finalizar |
-| ID en commits | Incluir ID de YouTrack |
-| YouTrack | https://communities.youtrack.cloud/agiles/195-1/current |
+---
 
-### Flujo Estricto (NO SKIP)
+### PASO 3: TASK_SOURCE
 
-| Paso | Acción | Workflow |
-|------|--------|----------|
-| 1 | `start` → Buscar/Crear sesión | ← Lógica de sesión |
-| 2 | INIT → Mostrar rol, skills, workflows | `init_workflow.md` |
-| 3 | TASK_SOURCE → Solicitar fuente | `task_source_workflow.md` |
-| 4 | PLAN → Leer `plan_workflow.md` → Esperar "next" | `plan_workflow.md` |
-| 5 | EXECUTE → Leer `execute_workflow.md` → Esperar "next" **antes de cada paso** | `execute_workflow.md` |
-| 6 | FINALIZE → Leer `finalize_workflow.md` → Confirmar **antes de cada paso** | `finalize_workflow.md` |
+**DOS OPCIONES:**
 
-### Reglas de Espera
+```
+¿De qué fuente quieres tomar las tareas?
 
-| Situación | Acción Requerida |
-|-----------|-----------------|
-| Sesión activa al iniciar | Esperar "retomar" o "nueva" |
-| Pregunta de fuente | Esperar respuesta del usuario |
-| Solicitar ruta archivo | Esperar respuesta, verificar, si no existe pedir otra |
-| Listar tareas | Mostrar lista completa, **luego esperar número** |
-| Solicitar tipo rama | Esperar respuesta |
-| Plan completado | Esperar "next" |
-| Antes de cada paso ejecución | Esperar "next" |
-| Finalización (commit/push/PR) | Esperar confirmación (si/no) |
+1. Archivo local   → Proporciona la ruta del archivo .md
+2. YouTrack        → Proporciona la URL del issue
+```
 
-### NO hacer NUNCA
+**Esperar respuesta (1 o 2).**
 
-- NO leer archivos automáticamente sin que el usuario lo solicite
-- NO listar opciones predefinidas que omitan espera de input real
-- NO continuar al siguiente paso sin esperar confirmación explícita
-- NO inventar rutas de archivos; esperar que el usuario proporcione la ruta real
-- NO continuar si la ruta de archivo no existe
-- NO iniciar flujo si el anterior no está completo
+---
+
+**Si opcion 1 (Archivo):**
+
+1. Solicitar ruta del archivo
+2. Leer archivo, listar tareas
+3. Seleccionar tarea
+4. Confirmar tarea
+5. **Crear tarea en YouTrack (OBLIGATORIO)**
+6. Continuar a Solicitar tipo de rama
+
+**Si opcion 2 (YouTrack):**
+
+1. Solicitar URL del issue
+2. Validar formato MCF-XXX
+3. Obtener información con `youtrack_get_issue`
+4. Confirmar tarea
+5. Continuar a Solicitar tipo de rama
+
+---
+
+**Solicitar tipo de rama:**
+
+```
+¿Cuál tipo de rama deseas crear?
+
+1. feature    → Rama base: development
+2. hotfix     → Rama base: main
+```
+
+**Esperar respuesta.**
+
+---
+
+### PASO 4: PLAN
+
+1. Leer `.agents/workflows/plan_workflow.md`
+2. Generar plan de implementación
+3. Mostrar plan
+4. Esperar "next"
+
+---
+
+### PASO 5: EXECUTE
+
+1. Leer `.agents/workflows/execute_workflow.md`
+2. Para cada paso:
+   - Mostrar qué se va a hacer
+   - Esperar "next"
+   - Ejecutar
+3. Verificación final
+4. Esperar "next"
+
+---
+
+### PASO 6: FINALIZE
+
+1. Leer `.agents/workflows/finalize_workflow.md`
+2. Para cada paso (6 pasos):
+   - Commit → esperar "si"
+   - Push → esperar "si"
+   - Verificar commits → esperar "si"
+   - Crear PR → esperar "si"
+   - Comentar YouTrack → esperar "si"
+   - Merge → esperar "si"
+3. Eliminar sesión
+
+---
+
+## Validación de Flujos
+
+```
+Al iniciar PASO N → Verificar PASO N-1 completado
+Si no completado → Error: "Completa paso {N-1} primero"
+```
+
+---
+
+## Regla CRÍTICA: YouTrack OBLIGATORIO para Archivo
+
+Cuando TASK_SOURCE es "Archivo local":
+1. Leer archivo de tareas
+2. Seleccionar tarea
+3. **CREAR TAREA EN YOUTRACK (PASO 3a)**
+4. Continuar a tipo de rama
+
+**NO SKIP. Si se intenta skipear, mostrar:**
+```
+❌ ERROR: Crear tarea en YouTrack es OBLIGATORIO cuando fuente es Archivo.
+```
+
+---
+
+## Archivos de Sesión
+
+Formato: `.context/session_YYYYMMDD_HHMMSS.md`
+
+Actualizar después de cada paso completado.
+
+---
 
 ## Workflows
 
@@ -167,24 +203,30 @@ Si flujo anterior no completado:
 - `.agents/workflows/execute_workflow.md` — Ejecución
 - `.agents/workflows/finalize_workflow.md` — Finalización
 
-## Templates
-
-- `.agents/templates/plan_template.md` — Plan de implementación
-- `.agents/templates/pr_template.md` — Pull Request
-- `.agents/templates/session-template.md` — Sesión activa
+---
 
 ## Comandos
 
 | Comando | Acción |
 |---------|--------|
-| `start` | **Flujo AGENT.md**: Iniciar o retomar sesión de desarrollo |
-| `next` | Continuar al siguiente paso del flujo |
-| `serve` | Iniciar servidor (preguntar Docker o local) |
+| `start` | **EJECUTAR Flujo Fijo completo** |
+| `next` | Continuar al siguiente paso |
+| `serve` | Iniciar servidor (Docker o local) |
 
-### Flujo de `serve`
+---
 
+## make check
+
+Antes de FINALIZE, ejecutar:
+```bash
+make check
 ```
-serve → ¿Docker o Local?
-  ├── Docker → make up
-  └── Local  → uvicorn main:app --reload --port 8999
-```
+
+Debe pasar (lint + typecheck + test).
+
+---
+
+## YouTrack
+
+- Proyecto: ContextForge
+- Sprint: https://communities.youtrack.cloud/agiles/195-1/current
