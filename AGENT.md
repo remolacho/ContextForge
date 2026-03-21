@@ -4,7 +4,7 @@
 
 ```
 1. start → Buscar sesión en .context/
-2. INIT → Mostrar rol, skills, workflows
+2. INIT → Mostrar rol, reglas, workflows
 3. TASK_SOURCE → Solicitar fuente (Archivo o YouTrack)
    - Si Archivo: Leer archivo → Crear tarea en YouTrack ⚠️ OBLIGATORIO
    - Si YouTrack: Obtener tarea de URL
@@ -33,28 +33,18 @@ Desarrollador Senior Python con experiencia en:
 - Docker y DevOps
 - Gestión de proyectos con YouTrack
 
-## Skills y Reglas Disponibles
-
-| Skill | Descripción |
-|-------|-------------|
-| `interface_layer` | FastAPI controllers, handlers, schemas. |
-| `application_layer` | ContextService (Facade) and specific use cases. |
-| `domain_layer` | Core entities, interfaces (ports), and exceptions. |
-| `infrastructure_layer` | Providers, LLM engines, cache, and builders. |
-| `patterns_architecture` | Clean Architecture, SOLID, and design patterns. |
-
-### Reglas de Desarrollo (skills/rules_develop/)
+## Reglas de Desarrollo (.agents/rules/)
 
 | Regla | Descripción |
 |-------|-------------|
-| `skills/rules_develop/class_format.md` | Formato de clases (≤15 líneas/método) |
-| `skills/rules_develop/controllers.md` | Patrón FastAPI controllers |
-| `skills/rules_develop/factories.md` | Patrón Factory |
-| `skills/rules_develop/domain_layer.md` | Entidades, interfaces, excepciones |
-| `skills/rules_develop/builders.md` | ContextItemBuilder, CacheEntryBuilder |
-| `skills/rules_develop/providers.md` | YouTrackProvider, ProviderFactory |
-| `skills/rules_develop/cache.md` | ChromaCacheRepository |
-| `skills/rules_develop/llm.md` | GeminiLLMEngine, Summarized |
+| `.agents/rules/class_format.md` | Formato de clases (≤15 líneas/método) |
+| `.agents/rules/controllers.md` | Patrón FastAPI controllers |
+| `.agents/rules/factories.md` | Patrón Factory |
+| `.agents/rules/domain_layer.md` | Entidades, interfaces, excepciones |
+| `.agents/rules/builders.md` | ContextItemBuilder, CacheEntryBuilder |
+| `.agents/rules/providers.md` | YouTrackProvider, ProviderFactory |
+| `.agents/rules/cache.md` | ChromaCacheRepository |
+| `.agents/rules/llm.md` | GeminiLLMEngine, Summarized |
 
 ---
 
@@ -78,7 +68,7 @@ ls -la .context/session_*.md 2>/dev/null | tail -1
 
 ### PASO 2: INIT
 
-1. Mostrar rol y skills
+1. Mostrar rol y reglas
 2. Listar workflows disponibles
 3. Crear session_YYYYMMDD_HHMMSS.md
 
@@ -162,7 +152,7 @@ SESSION_FILE=".context/session_${TIMESTAMP}.md"
 ### PASO 6: FINALIZE
 
 1. Leer `.agents/workflows/finalize_workflow.md`
-2. Para cada paso (6 pasos):
+2. Para cada paso (7 pasos):
    - Commit → esperar "si"
    - Push → esperar "si"
    - Verificar commits → esperar "si"

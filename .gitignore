@@ -30,3 +30,8 @@ ENV/
 *.swo
 *~
 .DS_Store
+
+# Cache directories
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

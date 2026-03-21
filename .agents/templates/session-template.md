@@ -9,7 +9,7 @@ Rama:
 | Paso | Estado | Descripción |
 |------|--------|-------------|
 | 1 | ⏳ | start - Buscar/Crear sesión |
-| 2 | ⏳ | INIT - Mostrar rol, skills |
+| 2 | ⏳ | INIT - Mostrar rol, reglas |
 | 3 | ⏳ | TASK_SOURCE - Fuente de tarea |
 | 3a | ⏳ | Crear tarea en YouTrack (si es Archivo) |
 | 4 | ⏳ | Solicitar tipo de rama |
@@ -45,6 +45,7 @@ Rama:
 - [ ] Crear PR
 - [ ] Comentar YouTrack
 - [ ] Merge
+- [ ] YouTrack Done
 
 ## Notas
 
