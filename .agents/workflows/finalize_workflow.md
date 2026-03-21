@@ -69,20 +69,17 @@ Pasos restantes:
 
 ---
 
-## Checklist de Pasos (en orden obligatorio)
+## Checklist de Pasos
 
 ```
-[ ] 1. Commit - obligatorio
-[ ] 2. Push - obligatorio
-[ ] 3. Crear PR - obligatorio
-[ ] 4. Comentar en YouTrack - obligatorio
-[ ] 5. Merge - opcional
-```
-[ ] 1. Commit (squash) - obligatorio
-[ ] 2. Push - obligatorio
-[ ] 3. Crear PR - obligatorio
-[ ] 4. Comentar en YouTrack - obligatorio
-[ ] 5. Merge - opcional (solicitar confirmación)
+Flujo mínimo (OBLIGATORIO):
+[ ] 1. Commit
+[ ] 2. Push
+
+Flujo completo (OPCIONAL):
+[ ] 3. Crear PR
+[ ] 4. Comentar en YouTrack
+[ ] 5. Merge
 ```
 
 ---
@@ -185,7 +182,7 @@ Remote: origin
 | Respuesta | Acción |
 |-----------|--------|
 | "si" | Continuar a ejecutar push |
-| "no" | Saltar a PASO 3 |
+| "no" | Ir a RESUMEN FINAL |
 
 ---
 
@@ -210,7 +207,7 @@ git push --set-upstream origin feature/MCF-XXX-descripcion
 
 ---
 
-## PASO 3: Crear Pull Request
+## PASO 3: Crear Pull Request (OPCIONAL)
 
 ### 3a: Solicitar confirmación
 
@@ -221,12 +218,14 @@ git push --set-upstream origin feature/MCF-XXX-descripcion
 
 Base: development (feature) / main (hotfix)
 Head: feature/MCF-XXX-descripcion
+
+NOTA: Este paso es opcional. Responde "no" si no quieres crear PR ahora.
 ```
 
 | Respuesta | Acción |
 |-----------|--------|
 | "si" | Continuar a crear PR |
-| "no" | Saltar a PASO 4 |
+| "no" | Ir a RESUMEN FINAL |
 
 ---
 
@@ -281,23 +280,25 @@ PR: https://github.com/.../pull/N
 
 ---
 
-## PASO 4: Actualizar YouTrack
+## PASO 4: Actualizar YouTrack (OPCIONAL)
 
 ### 4a: Solicitar confirmación
 
 **ACCIÓN REQUERIDA:** Mostrar y ESPERAR respuesta.
 
 ```
-¿Agregamos comentario en YouTrack con el link del PR? (si/no)
+¿Agregamos comentario en YouTrack? (si/no)
 
 MCF-XXX: https://communities.youtrack.cloud/issue/MCF-XXX
 PR: https://github.com/.../pull/N
+
+NOTA: Este paso es opcional. Responde "no" si no quieres comentar ahora.
 ```
 
 | Respuesta | Acción |
 |-----------|--------|
 | "si" | Continuar a agregar comentario |
-| "no" | Saltar a PASO 5 |
+| "no" | Ir a RESUMEN FINAL |
 
 ---
 
@@ -395,8 +396,26 @@ Sesión: eliminada ✅
 
 ---
 
-## RESUMEN FINAL (si no se hace merge)
+## RESUMEN FINAL
 
+```
+============================================================
+WORKFLOW DE FINALIZACIÓN
+============================================================
+
+Tarea: MCF-XXX
+Rama: feature/MCF-XXX-descripcion
+
+Flujo mínimo completado ✅:
+[x] Commit
+[x] Push
+
+Flujo completo (si aplica):
+[x] Crear PR: https://github.com/.../pull/N
+[x] Comentar en YouTrack
+[ ] Merge (pendiente)
+
+============================================================
 ```
 ================================================================
 WORKFLOW DE FINALIZACIÓN
@@ -426,12 +445,13 @@ Cuando estés listo para merge, responde 'finalize' de nuevo.
 
 | Paso | ¿Espera? | Qué espera |
 |------|----------|------------|
-| Commit | **SÍ** | "si" / "no" / "abort" |
-| Mensaje | **SÍ** | "si" / "modificar" / "no" |
-| Push | **SÍ** | "si" / "no" |
-| PR | **SÍ** | "si" / "no" |
-| YouTrack | **SÍ** | "si" / "no" |
-| Merge | **SÍ** | "si" / "no" |
+| 1. Commit | **SÍ** | "si" / "no" / "abort" |
+| 2. Push | **SÍ** | "si" / "no" |
+| 3. PR | **SÍ** | "si" / "no" (opcional) |
+| 4. YouTrack | **SÍ** | "si" / "no" (opcional) |
+| 5. Merge | **SÍ** | "si" / "no" (opcional) |
+
+**Importante:** Los pasos 3, 4 y 5 son opcionales. Si respondes "no", el workflow termina.
 
 ---
 
