@@ -1,12 +1,14 @@
 from app.session import SessionManager
 from src.application.services.context_service import ContextService
 from src.domain.entities import CacheEntry, Chunk, SessionConfig
+from src.infrastructure.resource_providers import ResourceResolverFactory
 
 
 class ToolCallHandler:
     def __init__(self, context_service: ContextService, session_manager: SessionManager) -> None:
         self._context_service = context_service
         self._session_manager = session_manager
+        self._resolver_factory = ResourceResolverFactory()
 
     def execute(
         self,
@@ -14,8 +16,11 @@ class ToolCallHandler:
         arguments: dict,
         session: SessionConfig,
     ) -> CacheEntry | list[Chunk]:
-        item_id = arguments.get("item_id", "")
+        resource = arguments.get("resource", "")
         provider_name = arguments.get("provider_name", "")
+
+        resolver = self._resolver_factory.create(provider_name)
+        item_id = resolver.resolve(resource)
 
         if tool_name == "read_full":
             return self._context_service.read_full(item_id, provider_name, session)

@@ -14,10 +14,12 @@ graph TD
     UC -->|usa interfaces| Domain["Domain Layer (Entities + Ports)"]
     UC -->|orquesta| Infra["Infrastructure Layer"]
     Infra -->|implementa| Domain
+    Infra --> Resolver["resource_providers/ (YouTrack...)"]
     Infra --> Provider["providers/ (YouTrack, Jira...)"]
     Infra --> Cache["cache/ (ChromaDB)"]
     Infra --> LLM["llm/ (Gemini + LangChain)"]
     Infra --> Builders["builders/ (ContextItemBuilder, CacheEntryBuilder)"]
+    Resolver -->|extrae ID| Provider
     Provider -->|HTTP REST| YouTrack["YouTrack API"]
     Cache -->|Docker Volume| Disk["Persistent Storage"]
 ```
@@ -49,11 +51,15 @@ graph LR
     end
     subgraph "Domain Layer"
         E["Entities (ContextItem, Chunk, CacheEntry, ProviderConfig, SessionConfig, LLMConfig)"]
-        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface, TextProcessingInterface)"]
+        P["Ports / Interfaces (ProviderInterface, CacheRepositoryInterface, LLMEngineInterface, TextProcessingInterface, ResourceResolverInterface)"]
         EX["Domain Exceptions"]
     end
     subgraph "Infrastructure Layer"
         PF["ProviderFactory"]
+        RF["ResourceResolverFactory"]
+        subgraph "resource_providers/"
+            YTR["YouTrackResourceResolver"]
+        end
         subgraph "providers/task/"
             YT["YouTrackProvider"]
         end
@@ -180,9 +186,12 @@ contextforge/
 │   │           ├── read_summarize.py # ReadSummarizeUseCase
 │   │           └── read_chunks.py   # ReadChunksUseCase
 │   └── infrastructure/
+│       ├── resource_providers/      # Resolución de URLs a IDs
+│       │   ├── factory.py           # ResourceResolverFactory
+│       │   └── youtrack.py          # YouTrackResourceResolver
 │       ├── providers/
 │       │   ├── __init__.py          # Registro de todos los proveedores en ProviderFactory
-│       │   ├── factory.py           # ProviderFactory: registro name → (category, class)
+│       │   ├── factory.py           # ProviderFactory
 │       │   ├── task/
 │       │   │   ├── __init__.py
 │       │   │   ├── youtrack.py      # YouTrackProvider (MVP funcional)
@@ -626,8 +635,12 @@ class ToolCallHandler:
         session: SessionConfig,
     ) -> CacheEntry | list[Chunk]:
         """Ejecuta la tool solicitada y retorna objeto de dominio."""
-        item_id = arguments.get("item_id", "")
+        resource = arguments.get("resource", "")
         provider_name = arguments.get("provider_name", "")
+
+        # Resolver el ID real (URL o ID plano)
+        resolver = ResourceResolverFactory.create(provider_name)
+        item_id = resolver.resolve(resource)
 
         if tool_name == "read_full":
             return self._context_service.read_full(item_id, provider_name, session)
@@ -708,10 +721,6 @@ Este mensaje es enviado por el cliente para configurar la sesión y los proveedo
 }
 ```
 
-### 2. Llamada a Herramienta (`tools/call`)
-Este mensaje solicita la ejecución de una herramienta específica (ej. `read_full`).
-
-```json
 {
   "jsonrpc": "2.0",
   "id": 2,
@@ -719,7 +728,24 @@ Este mensaje solicita la ejecución de una herramienta específica (ej. `read_fu
   "params": {
     "name": "read_full",
     "arguments": {
-      "item_id": "TICKET-101",
+      "resource": "TICKET-101",
+      "provider_name": "youtrack"
+    }
+  }
+}
+```
+
+O usando una URL:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "read_full",
+    "arguments": {
+      "resource": "https://company.youtrack.cloud/issue/TICKET-101",
       "provider_name": "youtrack"
     }
   }
@@ -757,10 +783,10 @@ Cuando el cliente (Cursor) solicita el catálogo de herramientas mediante `tools
       "inputSchema": {
         "type": "object",
         "properties": {
-          "item_id": { "type": "string", "description": "El ID del ítem a leer (ej. TICKET-101)." },
+          "resource": { "type": "string", "description": "ID o URL completa del recurso (ej. TICKET-101 o https://...)." },
           "provider_name": { "type": "string", "description": "Nombre del proveedor configurado (ej. 'youtrack')." }
         },
-        "required": ["item_id", "provider_name"]
+        "required": ["resource", "provider_name"]
       }
     },
     {
@@ -769,11 +795,11 @@ Cuando el cliente (Cursor) solicita el catálogo de herramientas mediante `tools
       "inputSchema": {
         "type": "object",
         "properties": {
-          "item_id": { "type": "string", "description": "El ID del ítem (ej. TICKET-101)." },
-          "provider_name": { "type": "string", "description": "Nombre del proveedor (ej. 'youtrack')." },
+          "resource": { "type": "string", "description": "ID o URL del recurso." },
+          "provider_name": { "type": "string", "description": "Nombre del proveedor." },
           "max_tokens": { "type": "integer", "description": "Límite aproximado de tokens para el resumen (min: 1, max: 10000).", "default": 500 }
         },
-        "required": ["item_id", "provider_name"]
+        "required": ["resource", "provider_name"]
       }
     },
     {
@@ -782,11 +808,11 @@ Cuando el cliente (Cursor) solicita el catálogo de herramientas mediante `tools
       "inputSchema": {
         "type": "object",
         "properties": {
-          "item_id": { "type": "string", "description": "El ID del ítem (ej. TICKET-101)." },
-          "provider_name": { "type": "string", "description": "Nombre del proveedor (ej. 'youtrack')." },
+          "resource": { "type": "string", "description": "ID o URL del recurso." },
+          "provider_name": { "type": "string", "description": "Nombre del proveedor." },
           "chunk_indices": { "type": "array", "items": { "type": "integer" }, "description": "Opcional: Lista de índices de fragmentos a recuperar (ej. [1, 3]). Si se omite, devuelve todos los fragmentos disponibles." }
         },
-        "required": ["item_id", "provider_name"]
+        "required": ["resource", "provider_name"]
       }
     }
   ]

@@ -35,9 +35,10 @@ Ejemplo de configuración que el cliente envía al servidor:
 - **ProviderConfig**: Configuración de un proveedor específico dentro de `SessionConfig`: `base_url` (opcional según proveedor) y `token` de autenticación. El nombre del proveedor es la clave del mapa `providers`.
 - **ChromaDB_Repository**: Componente responsable de interactuar con la base de datos vectorial ChromaDB.
 - **CacheManager**: Componente responsable de verificar y gestionar la caché en ChromaDB.
-- **ContextItem**: Objeto genérico que representa un ítem de contexto recuperado de cualquier proveedor, con ID, contenido y metadatos.
-- **Chunk**: Fragmento de texto de un ContextItem con un máximo de 500 tokens, identificado por su índice dentro del conjunto total.
-- **content_hash**: Hash SHA-256 del contenido completo del ContextItem tal como es retornado por el proveedor. Se usa junto con el `item_id` y `provider_name` como clave de caché compuesta.
+- **ContextItem**: Objeto genérico que representa un ítem de contexto recuperado de cualquier proveedor, con un ID resuelto, contenido y metadatos.
+- **resource**: Parámetro de entrada para las herramientas que puede ser una URL completa, un ID de ticket (ej. TICKET-101) o un hash de commit (ej. abc1234).
+- **ResourceResolver**: Componente encargado de normalizar un `resource` a un `item_id` interno antes de procesarlo.
+- **content_hash**: Hash SHA-256 del contenido completo del ContextItem tal como es retornado por el proveedor. Se usa junto con el `item_id` (normalizado) y `provider_name` como clave de caché compuesta.
 - **Chunk_Index**: Número entero que identifica la posición de un Chunk dentro del conjunto total, comenzando en 1.
 - **Token**: Unidad mínima de procesamiento de texto según el tokenizador del motor LLM activo.
 
@@ -86,51 +87,49 @@ Ejemplo de configuración que el cliente envía al servidor:
 
 ### Requisito 3: Herramienta de lectura completa (`read_full`)
 
-**User Story:** Como AI_Agent, quiero leer el contenido completo de un ítem de contexto por su ID y proveedor, para obtener toda la información disponible cuando necesito el contexto íntegro.
+**User Story:** Como AI_Agent, quiero leer el contenido completo de un ítem de contexto enviando un `resource` (URL, ID o Hash) y el nombre del proveedor, para obtener toda la información disponible de forma flexible.
 
 #### Criterios de Aceptación
 
-1. WHEN el AI_Agent invoca `read_full` con un `item_id` y `provider_name` válidos, THE ContextForge SHALL resolver el proveedor desde la `SessionConfig` usando `provider_name` como clave, instanciarlo via `ProviderFactory` y recuperar el contenido completo del ítem.
-2. WHEN el ítem es recuperado exitosamente, THE ContextForge SHALL retornar el texto completo del ítem al AI_Agent.
-3. WHEN el ítem es recuperado exitosamente, THE ChromaDB_Repository SHALL almacenar el contenido completo junto con los metadatos `{item_id, provider_name, content_hash, tool: "read_full", timestamp}`.
-4. WHEN el CacheManager detecta que existe en ChromaDB una entrada con el mismo `item_id`, `provider_name`, `content_hash` y `tool: "read_full"`, THE ContextForge SHALL retornar el contenido almacenado en caché sin consultar al proveedor.
-5. IF el `provider_name` no está en la `SessionConfig`, THEN THE ContextForge SHALL retornar un error indicando los proveedores disponibles en la sesión actual.
-6. IF el `item_id` no existe en el proveedor, THEN THE ContextForge SHALL retornar un error descriptivo indicando que el ítem no fue encontrado.
-7. IF el proveedor retorna un error de autenticación, THEN THE ContextForge SHALL retornar un error indicando que el token de autenticación es inválido o ha expirado.
+1. WHEN el AI_Agent invoca `read_full` con un `resource` y `provider_name` válidos, THE ContextForge SHALL normalizar el `resource` a un `item_id` interno usando un `ResourceResolver`.
+2. THE ContextForge SHALL resolver el proveedor desde la `SessionConfig` usando `provider_name` como clave, instanciarlo via `ProviderFactory` y recuperar el contenido completo del ítem usando el `item_id` normalizado.
+3. WHEN el ítem es recuperado exitosamente, THE ContextForge SHALL retornar el texto completo del ítem al AI_Agent.
+4. WHEN el ítem es recuperado exitosamente, THE ChromaDB_Repository SHALL almacenar el contenido completo junto con los metadatos `{item_id, provider_name, content_hash, tool: "read_full", timestamp}`.
+5. WHEN el CacheManager detecta que existe en ChromaDB una entrada con el mismo `item_id`, `provider_name`, `content_hash` y `tool: "read_full"`, THE ContextForge SHALL retornar el contenido almacenado en caché sin consultar al proveedor.
+6. IF el `provider_name` no está en la `SessionConfig`, THEN THE ContextForge SHALL retornar un error indicando los proveedores disponibles en la sesión actual.
+7. IF el `resource` no puede ser resuelto o el ítem no existe en el proveedor, THEN THE ContextForge SHALL retornar un error descriptivo indicando que el recurso no fue encontrado.
+8. IF el proveedor retorna un error de autenticación, THEN THE ContextForge SHALL retornar un error indicando que el token de autenticación es inválido o ha expirado.
 
 ---
 
 ### Requisito 4: Herramienta de resumen (`read_summarize`)
 
-**User Story:** Como AI_Agent, quiero obtener un resumen de los puntos más importantes de un ítem de contexto con un límite de tokens configurable, para obtener contexto conciso consumiendo la menor cantidad de tokens posible.
+**User Story:** Como AI_Agent, quiero obtener un resumen condensado de un `resource` con un límite de tokens configurable, para obtener contexto conciso de forma rápida.
 
 #### Criterios de Aceptación
 
-1. WHEN el AI_Agent invoca `read_summarize` con un `item_id` y `provider_name` válidos, THE ContextForge SHALL resolver el proveedor desde la `SessionConfig`, instanciarlo via `ProviderFactory` y recuperar el contenido completo del ítem.
+1. WHEN el AI_Agent invoca `read_summarize` con un `resource` y `provider_name`, THE ContextForge SHALL normalizar el `resource` a un `item_id` y recuperar el contenido vía `ProviderFactory`.
 2. WHEN el AI_Agent invoca `read_summarize` sin especificar `max_tokens`, THE ContextForge SHALL usar 500 como valor por defecto.
 3. WHEN el AI_Agent invoca `read_summarize` con un `max_tokens` explícito, THE LLMEngine SHALL generar un resumen del contenido respetando el límite de tokens indicado.
 4. WHEN el resumen es generado exitosamente, THE ContextForge SHALL retornar el resumen al AI_Agent.
 5. WHEN el resumen es generado exitosamente, THE ChromaDB_Repository SHALL almacenar el resumen junto con los metadatos `{item_id, provider_name, content_hash, tool: "read_summarize", max_tokens, timestamp}`.
-6. WHEN el CacheManager detecta que existe en ChromaDB una entrada con el mismo `item_id`, `provider_name`, `content_hash`, `tool: "read_summarize"` y el mismo `max_tokens`, THE ContextForge SHALL retornar el resumen almacenado en caché sin consultar al proveedor ni al LLMEngine.
-7. IF el `max_tokens` proporcionado es menor a 1 o mayor a 10000, THEN THE ContextForge SHALL retornar un error indicando que el valor debe estar entre 1 y 10000.
-8. IF el `item_id` no existe en el proveedor, THEN THE ContextForge SHALL retornar un error descriptivo indicando que el ítem no fue encontrado.
+6. WHEN el CacheManager detecta que existe en ChromaDB una entrada con el mismo `item_id`, `provider_name`, `content_hash`, `tool: "read_summarize"` e igual `max_tokens`, THE ContextForge SHALL retornar la caché.
+7. IF el `max_tokens` es inválido, THEN retornar error.
+8. IF el `resource` no se encuentra, THEN retornar error descriptivo.
 
 ---
 
 ### Requisito 5: Herramienta de fragmentación (`read_chunks`)
 
-**User Story:** Como AI_Agent, quiero dividir el contenido de un ítem en fragmentos de máximo 500 tokens y poder solicitar únicamente los fragmentos específicos que necesito, para consumir solo el contexto relevante y minimizar el uso de tokens.
+**User Story:** Como AI_Agent, quiero dividir el contenido de un `resource` en fragmentos manejables, para consumir solo el contexto relevante.
 
 #### Criterios de Aceptación
 
-1. WHEN el AI_Agent invoca `read_chunks` con un `item_id` y `provider_name` válidos, THE ContextForge SHALL resolver el proveedor desde la `SessionConfig`, instanciarlo via `ProviderFactory` y recuperar el contenido completo del ítem.
-2. WHEN el contenido del ítem es recuperado, THE ContextForge SHALL dividir el contenido en Chunks de máximo 500 tokens cada uno, asignando un Chunk_Index secuencial comenzando en 1.
-3. WHEN el AI_Agent invoca `read_chunks` sin especificar índices, THE ContextForge SHALL retornar todos los Chunks disponibles, incluyendo el Chunk_Index de cada Chunk y el total de Chunks generados.
-4. WHEN el AI_Agent invoca `read_chunks` especificando una lista de Chunk_Index (por ejemplo, [1, 2] o [3, 5]), THE ContextForge SHALL retornar únicamente los Chunks correspondientes a los índices solicitados, junto con el total de Chunks del ítem.
-5. WHEN los Chunks son generados, THE ChromaDB_Repository SHALL almacenar cada Chunk individualmente con los metadatos `{item_id, provider_name, content_hash, tool: "read_chunks", chunk_index, total_chunks, timestamp}`.
-6. WHEN el CacheManager detecta que existe en ChromaDB una entrada con el mismo `item_id`, `provider_name`, `content_hash` y `tool: "read_chunks"`, THE ContextForge SHALL recuperar los Chunks desde caché sin consultar al proveedor y retornar únicamente los índices solicitados.
-7. IF el AI_Agent solicita un Chunk_Index que no existe para el ítem, THEN THE ContextForge SHALL retornar un error descriptivo indicando los índices válidos disponibles (de 1 a total_chunks).
-8. IF el `item_id` no existe en el proveedor, THEN THE ContextForge SHALL retornar un error descriptivo indicando que el ítem no fue encontrado.
+1. WHEN el AI_Agent invoca `read_chunks` con un `resource` y `provider_name`, THE ContextForge SHALL normalizar el `resource` y recuperar el contenido.
+2. THE ContextForge SHALL dividir el contenido en Chunks de máximo 500 tokens cada uno.
+3. WHEN el AI_Agent solicita índices específicos, THE ContextForge SHALL retornar únicamente esos fragmentos.
+4. WHEN los Chunks son generados, THE ChromaDB_Repository SHALL almacenar cada Chunk con metadatos indexados por el `item_id` normalizado.
+5. IF el `resource` no se encuentra, THEN retornar error descriptivo.
 9. THE ContextForge SHALL preservar la coherencia semántica al dividir el contenido, evitando cortar oraciones a la mitad cuando sea posible.
 
 ---

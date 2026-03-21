@@ -7,16 +7,16 @@ TOOLS_DEFINITION = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "item_id": {
+                "resource": {
                     "type": "string",
-                    "description": "El ID del ítem a leer (ej. TICKET-101).",
+                    "description": "ID del ítem (ej. TICKET-101) o URL completa del recurso.",
                 },
                 "provider_name": {
                     "type": "string",
                     "description": "Nombre del proveedor configurado (ej. 'youtrack').",
                 },
             },
-            "required": ["item_id", "provider_name"],
+            "required": ["resource", "provider_name"],
         },
     },
     {
@@ -26,9 +26,9 @@ TOOLS_DEFINITION = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "item_id": {
+                "resource": {
                     "type": "string",
-                    "description": "El ID del ítem (ej. TICKET-101).",
+                    "description": "ID del ítem (ej. TICKET-101) o URL completa del recurso.",
                 },
                 "provider_name": {
                     "type": "string",
@@ -41,7 +41,7 @@ TOOLS_DEFINITION = [
                     "default": 500,
                 },
             },
-            "required": ["item_id", "provider_name"],
+            "required": ["resource", "provider_name"],
         },
     },
     {
@@ -52,9 +52,9 @@ TOOLS_DEFINITION = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "item_id": {
+                "resource": {
                     "type": "string",
-                    "description": "El ID del ítem (ej. TICKET-101).",
+                    "description": "ID del ítem (ej. TICKET-101) o URL completa del recurso.",
                 },
                 "provider_name": {
                     "type": "string",
@@ -67,7 +67,7 @@ TOOLS_DEFINITION = [
                     "(ej. [1, 3]). Si se omite, devuelve todos los fragmentos disponibles.",
                 },
             },
-            "required": ["item_id", "provider_name"],
+            "required": ["resource", "provider_name"],
         },
     },
 ]

@@ -1,33 +1,112 @@
 # YouTrack Create Issue
 
 ## Description
-Create a new issue in YouTrack.
+Create ONE issue in YouTrack combining all selected tasks.
 
-## Tool
-Use `youtrack_create_issue` with the following parameters:
+## REGLA CRÍTICA: UNA SOLA TAREA
 
-| Parameter | Value |
-|-----------|-------|
-| project | ContextForge |
-| summary | Task title from source file |
-| description | Full task description |
+**Sin importar cuántas tareas se seleccionen (1 o 100), se crea UN SOLO issue en YouTrack.**
+
+Las tareas seleccionadas se combinan en:
+- **Título:** Primera tarea + " (+N más)" si hay más
+- **Descripción:** Lista de todas las tareas en formato markdown
+
+---
+
+## Tool: youtrack_create_issue
+
+Usar `youtrack_create_issue` UNA SOLA VEZ con todos los datos combinados:
+
+```json
+{
+  "project": "ContextForge",
+  "summary": "{título de la primera tarea} (+{N-1} más)",
+  "description": "## Tareas del batch\n\n### 1. Título 1\nDescripción 1...\n\n### 2. Título 2\nDescripción 2..."
+}
+```
+
+---
 
 ## Project Configuration
 - Project: ContextForge
 - Sprint: https://communities.youtrack.cloud/agiles/195-1/current
 
-## Validation
-**OBLIGATORY** when task source is "Archivo local".
+---
 
-## Output
-Display created issue URL:
+## Validación
+**OBLIGATORIO** cuando task source es "Archivo local".
+
+---
+
+## Formatos de Selección (del usuario)
+
+| Formato | Ejemplo | Resultado |
+|---------|---------|-----------|
+| Número solo | `1` | 1 tarea → 1 YouTrack |
+| Números separados | `1,3,5` | 3 tareas → 1 YouTrack con 3 |
+| Rango | `1-3` | 3 tareas → 1 YouTrack con 3 |
+| "todas" | `todas` | Todas → 1 YouTrack con todas |
+| Combinación | `1,3-5,7` | 5 tareas → 1 YouTrack con 5 |
+
+---
+
+## Output Template
+
 ```
-Tarea creada en YouTrack:
-https://communities.youtrack.cloud/issue/MCF-XXX
+Creando tarea en YouTrack...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MCF-XXX: Título de la primera tarea (+2 más)
+→ https://communities.youtrack.cloud/issue/MCF-XXX ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ 1 tarea creada con {N} subtareas combinadas
 ```
+
+---
+
+## Estructura del Issue Creado
+
+### Título
+```
+Implementar feature X (+2 más)
+```
+
+### Descripción
+```markdown
+## Tareas del batch
+
+### 1. Título tarea 1
+Descripción completa de la tarea 1...
+
+### 2. Título tarea 2
+Descripción completa de la tarea 2...
+
+### 3. Título tarea 3
+Descripción completa de la tarea 3...
+```
+
+---
 
 ## Error Handling
-If creation fails, show error and abort workflow.
+
+Si la creación falla:
+```
+❌ ERROR: Falló al crear tarea en YouTrack.
+
+Reintentar creación.
+Si persiste, abortar workflow.
+```
+
+---
+
+## Después de Crear
+
+1. Guardar el ID único creado (MCF-XXX) en sesión
+2. Mostrar URL del issue
+3. Continuar a selección de tipo de rama
+
+---
 
 ## Next Step
 Return to invoking workflow
