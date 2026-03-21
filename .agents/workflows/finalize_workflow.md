@@ -43,7 +43,7 @@ Rama: feature/MCF-XXX-descripcion
 PR: (pendiente)
 
 Pasos restantes:
-[ ] 1. Commit (squash)
+[ ] 1. Commit
 [ ] 2. Push
 [ ] 3. Crear PR
 [ ] 4. Comentar en YouTrack
@@ -72,6 +72,12 @@ Pasos restantes:
 ## Checklist de Pasos (en orden obligatorio)
 
 ```
+[ ] 1. Commit - obligatorio
+[ ] 2. Push - obligatorio
+[ ] 3. Crear PR - obligatorio
+[ ] 4. Comentar en YouTrack - obligatorio
+[ ] 5. Merge - opcional
+```
 [ ] 1. Commit (squash) - obligatorio
 [ ] 2. Push - obligatorio
 [ ] 3. Crear PR - obligatorio
@@ -81,21 +87,21 @@ Pasos restantes:
 
 ---
 
-## PASO 1: Commit (Squash)
+## PASO 1: Commit
 
-### 1a: Mostrar estado de commits
+### 1a: Mostrar archivos modificados
 
 ```
-================================================================
-PASO 1 DE 5: Commit (Squash)
-================================================================
+============================================================
+PASO 1 DE 5: Commit
+============================================================
 
-Commits en esta rama (desde base):
-- abc1234: Initial commit
-- def5678: Add ContextItemBuilder
-- ghi9012: Add tests
+Archivos modificados:
+- archivo1.py
+- archivo2.py
 
-Total: 3 commits (serán squash en 1)
+Archivos nuevos:
+- archivo_nuevo.py
 ```
 
 ---
@@ -105,39 +111,25 @@ Total: 3 commits (serán squash en 1)
 **ACCIÓN REQUERIDA:** Mostrar y ESPERAR respuesta.
 
 ```
-¿Hacemos squash y commit? (si/no)
+¿Hacemos commit de estos archivos? (si/no)
 ```
 
 | Respuesta | Acción |
 |-----------|--------|
-| "si" | Continuar a ejecutar squash |
+| "si" | Continuar a 1c |
 | "no" | Saltar a PASO 2 |
 | "abort" | Abortar seluruh workflow |
 
 ---
 
-### 1c: Ejecutar squash
-
-```bash
-git merge-base HEAD origin/development
-# o para hotfix:
-# git merge-base HEAD origin/main
-```
-
-```bash
-git reset --soft $(git merge-base HEAD origin/development)
-```
-
----
-
-### 1d: Leer template de commit
+### 1c: Leer template de commit
 
 - Leer `.agents/templates/commit_template.md`
 - Generar mensaje de commit
 
 ---
 
-### 1e: Solicitar confirmación del mensaje
+### 1d: Solicitar confirmación del mensaje
 
 ```
 Mensaje de commit propuesto:
@@ -155,9 +147,10 @@ MCF-XXX: descripción corta de la tarea
 
 ---
 
-### 1f: Ejecutar commit
+### 1e: Ejecutar commit
 
 ```bash
+git add <archivos_de_la_tarea>
 git commit -m "MCF-XXX: mensaje"
 ```
 
