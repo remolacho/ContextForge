@@ -2,7 +2,7 @@
 
 ## Regla Principal
 
-**6 pasos en orden. Cada uno espera "si" para continuar.**
+**7 pasos en orden. Cada uno espera "si" para continuar.**
 
 ---
 
@@ -23,7 +23,7 @@ git status --porcelain
 ```
 
 ```
-PASO 1 DE 6: Commit
+PASO 1 DE 7: Commit
 
 Archivos modificados:
 - archivo1.py
@@ -48,7 +48,7 @@ git commit -m "MCF-XXX: mensaje"
 ### 2a: Mostrar
 
 ```
-PASO 2 DE 6: Push
+PASO 2 DE 7: Push
 
 Rama: feature/MCF-XXX-descripcion
 ```
@@ -74,7 +74,7 @@ git log origin/development..HEAD --oneline
 ```
 
 ```
-PASO 3 DE 6: Verificar Commits
+PASO 3 DE 7: Verificar Commits
 
 Commits desde origin/development:
 - abc1234: Mensaje 1
@@ -117,7 +117,7 @@ Descripción generada:
 ### 4b: Mostrar preview
 
 ```
-PASO 4 DE 6: Crear PR
+PASO 4 DE 7: Crear PR
 
 Título: MCF-XXX: título
 Base: development
@@ -180,7 +180,7 @@ Usar `youtrack_add_issue_comment` con el texto generado.
 ### 6a: Mostrar
 
 ```
-PASO 6 DE 6: Merge
+PASO 6 DE 7: Merge
 
 ¿Hacemos merge del PR?
 ADVERTENCIA: Esto mergea a development.
@@ -205,6 +205,28 @@ Mantener sesión.
 
 ---
 
+## PASO 7: Marcar YouTrack como Done
+
+### 7a: Mostrar
+
+```
+PASO 7 DE 7: Marcar YouTrack como Done
+
+https://communities.youtrack.cloud/issue/MCF-XXX
+```
+
+### 7b: Ejecutar
+
+Usar `youtrack_update_issue` con:
+```json
+{
+  "issueId": "MCF-XXX",
+  "customFields": {"State": "Done"}
+}
+```
+
+---
+
 ## Resumen Final
 
 ```
@@ -223,6 +245,7 @@ Pasos completados:
 [x] Crear PR
 [x] Comentar YouTrack
 [x] Merge
+[x] YouTrack Done
 
 Sesión eliminada.
 ================================================================
@@ -240,3 +263,4 @@ Sesión eliminada.
 | 4. PR | "si" / "abort" |
 | 5. YouTrack | "si" / "abort" |
 | 6. Merge | "si" / "no" |
+| 7. YouTrack Done | automático |

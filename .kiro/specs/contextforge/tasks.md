@@ -507,7 +507,7 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - Comentario: `# Feature: contextforge, Propiedad 3: Round-trip de caché por herramienta`
     - _Ver `requirements.md`: Req. 3 — read_full (§4), Req. 4 — read_summarize (§6), Req. 5 — read_chunks (§6), Req. 6 — Caché (§3,5)_
 
-- [ ] 16. Checkpoint final — Integración completa
+- [x] 16. Checkpoint final — Integración completa
   > Verificación final de que todo el sistema funciona de extremo a extremo: tests, servidor y Docker.
   - Ejecutar todos los tests: `pytest tests/ -v` y verificar que todos pasan
   - Verificar que el servidor arranca correctamente: `uvicorn main:app --port 8999`
