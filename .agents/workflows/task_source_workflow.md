@@ -45,18 +45,27 @@ Tareas disponibles:
 
 [1] Título tarea 1
 [2] Título tarea 2
+[3] Título tarea 3
 ...
 
-¿Cuál tarea deseas tomar?
+Puedes seleccionar varias usando comas: 1,3
+o un rango: 1-3
+o 'todas' para seleccionar todas
 ```
 
-**Esperar número (1-N).**
+**Esperar respuesta (números, rango, o "todas").**
 
 ---
 
-### Paso 5: Confirmar tarea
+### Paso 5: Confirmar tareas seleccionadas
 
-Mostrar tarea seleccionada.
+Mostrar tareas seleccionadas:
+```
+Tareas seleccionadas (3):
+1. Título tarea 1
+2. Título tarea 2
+3. Título tarea 3
+```
 
 → Leer `.agents/skills/workflow/wait_yes_no.md`
 
@@ -67,14 +76,41 @@ Mostrar tarea seleccionada.
 
 ---
 
-### Paso 6: Crear tarea en YouTrack ⚠️ OBLIGATORIO
+### Paso 6: Crear UNA SOLA tarea en YouTrack ⚠️ OBLIGATORIO
+
+**REGLA CRÍTICA: Se crea UNA SOLA tarea en YouTrack, sin importar cuántas se seleccionaron.**
 
 → Leer `.agents/skills/youtrack/create_issue.md`
 
-Mostrar resultado:
+Todas las tareas seleccionadas se combinan en UN SOLO issue:
+
+**Título:** `{título de la primera tarea} (+N más)` si hay varias
+
+**Descripción:**
+```markdown
+## Tareas del batch
+
+### 1. Título tarea 1
+Descripción de la tarea 1...
+
+### 2. Título tarea 2
+Descripción de la tarea 2...
+
+### 3. Título tarea 3
+Descripción de la tarea 3...
 ```
-Tarea creada en YouTrack:
-https://communities.youtrack.cloud/issue/MCF-XXX
+
+→ Ejecutar `youtrack_create_issue` UNA SOLA VEZ:
+
+```
+Creando tarea en YouTrack...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MCF-XXX: Título tarea 1 (+2 más)
+→ https://communities.youtrack.cloud/issue/MCF-XXX ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ 1 tarea creada con 3 subtareas combinadas
 ```
 
 ---
@@ -153,6 +189,44 @@ Continuar a Solicitar tipo de rama.
 |-----------|-----------|
 | "feature" / "1" | development |
 | "hotfix" / "2" | main |
+
+---
+
+## Validación TASK_SOURCE completado
+
+Antes de continuar a PLAN, verificar:
+
+| Check | Validar |
+|-------|----------|
+| Fuente | YouTrack URL o Archivo seleccionado |
+| Tarea | Confirmada por usuario |
+| YouTrack | Issue ID (MCF-XXX) obtenido |
+| Rama tipo | feature o hotfix seleccionado |
+
+**Si falta algo:**
+```
+❌ ERROR: TASK_SOURCE incompleto.
+
+Verificar:
+[ ] Fuente de tarea seleccionada
+[ ] Tarea confirmada
+[ ] YouTrack issue ID obtenido
+[ ] Tipo de rama seleccionado
+```
+
+**Si todo completo:**
+```
+✅ TASK_SOURCE completado.
+Continuando a PLAN...
+```
+
+→ Leer `.agents/skills/session/update.md`
+
+Actualizar sesión:
+```markdown
+| 3. TASK_SOURCE | ✅ | Fuente: {fuente}, Rama: {tipo} |
+| 4. Tipo_rama | ✅ | {feature/hotfix} |
+```
 
 ---
 

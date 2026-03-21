@@ -74,3 +74,17 @@ class CacheRepositoryInterface(ABC):
 
     @abstractmethod
     def invalidate(self, item_id: str, provider_name: str, tool: str) -> None: ...
+
+
+class ResourceResolverInterface(ABC):
+    @abstractmethod
+    def resolve(self, resource: str) -> str:
+        """Resuelve un resource (que puede ser ID o URL) a un ID válido.
+
+        Args:
+            resource: ID del ítem o URL completa del recurso.
+
+        Returns:
+            ID válido del ítem.
+        """
+        ...

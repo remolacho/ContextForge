@@ -100,9 +100,9 @@ SESSION_FILE=".context/session_${TIMESTAMP}.md"
 
 1. Solicitar ruta del archivo
 2. Leer archivo, listar tareas
-3. Seleccionar tarea
-4. Confirmar tarea
-5. **Crear tarea en YouTrack (OBLIGATORIO)**
+3. **Seleccionar UNA o VARIAS tareas** (separadas por coma, rango, o "todas")
+4. Confirmar tareas seleccionadas
+5. **Crear UNA SOLA tarea en YouTrack combinando todas las seleccionadas (OBLIGATORIO)**
 6. Continuar a Solicitar tipo de rama
 
 **Si opcion 2 (YouTrack):**
@@ -172,17 +172,70 @@ Si no completado → Error: "Completa paso {N-1} primero"
 
 ---
 
+## Matriz de Validación Secuencial
+
+| Antes de | Verificar | Si falla |
+|----------|-----------|----------|
+| INIT (2) | start completado | No puede pasar |
+| TASK_SOURCE (3) | INIT completado, sesión existe | Error |
+| PLAN (5) | TASK_SOURCE completado, YouTrack ID, tipo rama | Error |
+| EXECUTE (6) | PLAN completado, **rama validada** | Error + cómo corregir |
+| FINALIZE (7) | EXECUTE completado, **make check pasa** | No continuar |
+
+---
+
+## Validación de Rama ⚠️ CRÍTICO
+
+**Antes de continuar de PLAN a EXECUTE:**
+
+1. Ejecutar `.agents/skills/git/validate_branch.md`
+2. Verificar `git branch --show-current` retorna nombre válido
+3. Formato: `feature/MCF-XXX-descripcion` o `hotfix/MCF-XXX-descripcion`
+4. Working directory debe estar limpio
+
+**SI LA RAMA NO EXISTE O TIENE FORMATO INCORRECTO:**
+```
+❌ ERROR: Rama no creada o nombre incorrecto.
+
+Si escribiste "feature" en lugar de "feature/MCF-XXX-descripcion":
+  git branch -m feature feature/MCF-XXX-descripcion
+  git checkout feature/MCF-XXX-descripcion
+
+Si no creaste la rama:
+  git checkout -b feature/MCF-XXX-descripcion development
+
+Verificar: git branch --show-current
+```
+
+---
+
+## Validación Pre-Finalize ⚠️ CRÍTICO
+
+Antes de FINALIZE (PASO 6):
+1. Verificar todos los pasos de EXECUTE completados
+2. Ejecutar `make check` - debe pasar
+3. Si falla → No continuar hasta resolver errores
+
+---
+
 ## Regla CRÍTICA: YouTrack OBLIGATORIO para Archivo
 
 Cuando TASK_SOURCE es "Archivo local":
 1. Leer archivo de tareas
-2. Seleccionar tarea
-3. **CREAR TAREA EN YOUTRACK (PASO 3a)**
+2. Seleccionar UNA o VARIAS tareas
+3. **CREAR UNA SOLA TAREA EN YOUTRACK combinando todas las seleccionadas**
 4. Continuar a tipo de rama
+
+**REGLA DE COMBINACIÓN:**
+- Seleccionar `1,2,3` → Crear 1 solo YouTrack con las 3 tareas combinadas
+- Seleccionar `todas` → Crear 1 solo YouTrack con todas las tareas
+- **NUNCA crear múltiples YouTrack aunque se seleccionen múltiples tareas**
 
 **NO SKIP. Si se intenta skipear, mostrar:**
 ```
 ❌ ERROR: Crear tarea en YouTrack es OBLIGATORIO cuando fuente es Archivo.
+
+Debes crear UN SOLO issue en YouTrack combinando todas las tareas seleccionadas.
 ```
 
 ---
