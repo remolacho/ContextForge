@@ -14,6 +14,45 @@ Si no completado → Error: "Completa EXECUTE primero"
 
 ---
 
+## Validación Pre-Finalize ⚠️ CRÍTICO
+
+→ Leer `.agents/skills/session/read.md`
+
+Verificar que EXECUTE está completado en sesión.
+
+→ Leer `.agents/skills/checks/make_check.md`
+
+Ejecutar `make check` antes de iniciar finalize:
+
+```
+PASO 0/7: Validación Pre-Finalize
+
+Ejecutando lint, typecheck, tests...
+```
+
+→ Leer `.agents/skills/session/update.md`
+
+Actualizar sesión:
+```markdown
+| 7. FINALIZE | 🔄 | En progreso |
+```
+
+**Si make check FALLA:**
+```
+❌ ERROR: make check FALLÓ.
+
+Debes resolver los errores antes de hacer commit.
+Ejecuta 'make check' localmente para ver los detalles.
+```
+
+**Si make check PASA:**
+```
+✅ make check pasado.
+Continuando a commit...
+```
+
+---
+
 ## PASO 1: Commit
 
 ### 1a: Mostrar archivos modificados
@@ -222,9 +261,14 @@ Pasos completados:
 [x] Comentar YouTrack
 [x] Merge
 [x] YouTrack Done
-
-Sesión eliminada.
 ============================================================
+```
+
+→ Leer `.agents/skills/session/update.md`
+
+Actualizar sesión:
+```markdown
+| 7. FINALIZE | ✅ | Completado - PR mergeado, YouTrack Done |
 ```
 
 → Leer `.agents/skills/session/delete.md`

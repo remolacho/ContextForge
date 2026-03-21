@@ -1,5 +1,16 @@
 # Workflow: Inicialización
 
+## Validación Previa
+
+→ Leer `.agents/skills/session/read.md`
+
+Verificar:
+| Check | Si existe | Si no existe |
+|-------|-----------|--------------|
+| Sesión | Mostrar resumen, esperar "retomar"/"nueva" | Crear nueva |
+
+---
+
 ## Paso 1: Buscar sesión
 
 → Leer `.agents/skills/session/read.md`
@@ -53,6 +64,32 @@ Habilidades:
 ## Paso 5: Crear sesión
 
 → Leer `.agents/skills/session/create.md`
+
+---
+
+## Validación INIT Completado
+
+Antes de continuar a TASK_SOURCE, verificar:
+
+| Check | Estado |
+|-------|--------|
+| Sesión creada | .context/session_*.md existe |
+| Rol mostrado | ✅ |
+| Reglas listadas | ✅ |
+| Workflows listados | ✅ |
+
+**Si todo correcto:**
+```
+✅ INIT completado.
+Continuando a TASK_SOURCE...
+```
+
+→ Leer `.agents/skills/session/update.md`
+
+Actualizar sesión:
+```markdown
+| 2. INIT | ✅ | Mostrar rol, reglas |
+```
 
 ---
 
