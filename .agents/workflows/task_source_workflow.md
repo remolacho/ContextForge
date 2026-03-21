@@ -1,7 +1,3 @@
----
-description: 
----
-
 # Workflow: Fuente de Tareas
 
 ## Regla Principal
@@ -16,7 +12,7 @@ description:
 
 ```
 Proporciona la ruta al archivo de tareas (.md):
-Ejemplo: .specs/contextforge/tasks.md
+Ejemplo: tasks.md o docs/tasks.md
 ```
 
 **Esperar respuesta.**
@@ -24,6 +20,8 @@ Ejemplo: .specs/contextforge/tasks.md
 ---
 
 ### Paso 2: Verificar existencia
+
+→ Leer `.agents/skills/workflow/validate_file_exists.md`
 
 | Resultado | Acción |
 |-----------|--------|
@@ -60,7 +58,7 @@ Tareas disponibles:
 
 Mostrar tarea seleccionada.
 
-**Esperar "si" o "no".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 | Respuesta | Acción |
 |-----------|--------|
@@ -71,12 +69,7 @@ Mostrar tarea seleccionada.
 
 ### Paso 6: Crear tarea en YouTrack ⚠️ OBLIGATORIO
 
-**NO SKIP. Este paso es obligatorio.**
-
-- Usar `youtrack_create_issue`
-- Project: ContextForge
-- Sprint: https://communities.youtrack.cloud/agiles/195-1/current
-- Crear UNA tarea con título y descripción completos
+→ Leer `.agents/skills/youtrack/create_issue.md`
 
 Mostrar resultado:
 ```
@@ -116,7 +109,7 @@ Regex: `MCF-\d+`
 
 ### Paso 3: Obtener información
 
-Usar `youtrack_get_issue` con el ID.
+→ Leer `.agents/skills/youtrack/get_issue.md`
 
 Extraer: summary, description, estado.
 
@@ -132,7 +125,7 @@ Descripción: ...
 Estado: ...
 ```
 
-**Esperar "si" o "no".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 | Respuesta | Acción |
 |-----------|--------|

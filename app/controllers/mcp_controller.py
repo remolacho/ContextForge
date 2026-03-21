@@ -1,11 +1,11 @@
 from fastapi import status
 
 from app.controllers.application_controller import ApplicationController
+from app.handlers.initialize import InitializeHandler
+from app.handlers.tool_call import ToolCallHandler
+from app.handlers.tools_list import ToolsListHandler
 from app.schemas import ErrorResponse, ToolCallRequest
 from app.schemas.serialize import serialize_response
-from app.services.handlers.initialize import InitializeHandler
-from app.services.handlers.tool_call import ToolCallHandler
-from app.services.handlers.tools_list import ToolsListHandler
 from app.session import SessionManager
 from src.application.services.context_service import ContextService
 

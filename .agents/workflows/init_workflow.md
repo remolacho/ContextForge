@@ -1,17 +1,14 @@
 # Workflow: Inicialización
 
-## Paso 1: Crear sesión
+## Paso 1: Buscar sesión
 
-```bash
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-SESSION_FILE=".context/session_${TIMESTAMP}.md"
-```
-
-Crear archivo con session-template.md.
+→ Leer `.agents/skills/session/read.md`
 
 ---
 
 ## Paso 2: Mostrar rol
+
+→ Leer `.agents/prompts/role.md`
 
 ```
 ROL: Desarrollador Senior Python
@@ -26,36 +23,36 @@ Habilidades:
 
 ---
 
-## Paso 3: Listar skills y reglas
-
-| Skill | Capa / Propósito |
-|-------|------------------|
-| `interface_layer` | Controllers, Handlers, Schemas, FastAPI |
-| `application_layer` | ContextService, Use Cases |
-| `domain_layer` | Entities, Interfaces/Ports, Exceptions |
-| `infrastructure_layer` | Providers, LLM, Cache, Builders, Factories |
-| `patterns_architecture` | Clean Arch, SOLID, Patterns |
+## Paso 3: Listar reglas de desarrollo
 
 | Regla de Desarrollo | Descripción |
 |-------|-------------|
-| `skills/rules_develop/class_format.md` | Formato de clases (≤15 líneas/método) |
-| `skills/rules_develop/controllers.md` | Patrón FastAPI controllers |
-| `skills/rules_develop/factories.md` | Patrón Factory |
-| `skills/rules_develop/domain_layer.md` | Entidades, interfaces, excepciones |
-| `skills/rules_develop/builders.md` | ContextItemBuilder, CacheEntryBuilder |
-| `skills/rules_develop/providers.md` | YouTrackProvider, ProviderFactory |
-| `skills/rules_develop/cache.md` | ChromaCacheRepository |
-| `skills/rules_develop/llm.md` | GeminiLLMEngine, Summarized |
+| `.agents/rules/class_format.md` | Formato de clases (≤15 líneas/método) |
+| `.agents/rules/controllers.md` | Patrón FastAPI controllers |
+| `.agents/rules/factories.md` | Patrón Factory |
+| `.agents/rules/domain_layer.md` | Entidades, interfaces, excepciones |
+| `.agents/rules/builders.md` | ContextItemBuilder, CacheEntryBuilder |
+| `.agents/rules/providers.md` | YouTrackProvider, ProviderFactory |
+| `.agents/rules/cache.md` | ChromaCacheRepository |
+| `.agents/rules/llm.md` | GeminiLLMEngine, Summarized |
 
 ---
 
 ## Paso 4: Listar workflows
+
+→ Leer `.agents/skills/workflow/read_workflow.md`
 
 - init_workflow.md — Inicialización
 - task_source_workflow.md — Fuente de tareas
 - plan_workflow.md — Planificación
 - execute_workflow.md — Ejecución
 - finalize_workflow.md — Finalización
+
+---
+
+## Paso 5: Crear sesión
+
+→ Leer `.agents/skills/session/create.md`
 
 ---
 

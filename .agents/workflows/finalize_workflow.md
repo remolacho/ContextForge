@@ -8,7 +8,7 @@
 
 ## Validación
 
-Verificar EXECUTE completado en sesión.
+→ Leer `.agents/skills/workflow/validate_previous_step.md`
 
 Si no completado → Error: "Completa EXECUTE primero"
 
@@ -18,9 +18,7 @@ Si no completado → Error: "Completa EXECUTE primero"
 
 ### 1a: Mostrar archivos modificados
 
-```bash
-git status --porcelain
-```
+→ Leer `.agents/skills/git/show_status.md`
 
 ```
 PASO 1 DE 7: Commit
@@ -32,14 +30,15 @@ Archivos modificados:
 
 ### 1b: Esperar "si"
 
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
+
 **Esperar "si" o "abort".**
 
 ### 1c: Commit
 
-```bash
-git add <archivos>
-git commit -m "MCF-XXX: mensaje"
-```
+→ Leer `.agents/skills/git/add_files.md`
+
+→ Leer `.agents/skills/git/commit.md`
 
 ---
 
@@ -55,13 +54,11 @@ Rama: feature/MCF-XXX-descripcion
 
 ### 2b: Esperar "si"
 
-**Esperar "si" o "abort".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 ### 2c: Push
 
-```bash
-git push --set-upstream origin feature/MCF-XXX-descripcion
-```
+→ Leer `.agents/skills/git/push.md`
 
 ---
 
@@ -69,9 +66,7 @@ git push --set-upstream origin feature/MCF-XXX-descripcion
 
 ### 3a: Mostrar commits
 
-```bash
-git log origin/development..HEAD --oneline
-```
+→ Leer `.agents/skills/git/verify_commits.md`
 
 ```
 PASO 3 DE 7: Verificar Commits
@@ -90,7 +85,7 @@ Squash se hará vía GitHub automáticamente.
 
 ### 3c: Esperar "si"
 
-**Esperar "si" o "abort".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 ---
 
@@ -100,19 +95,7 @@ Squash se hará vía GitHub automáticamente.
 
 Título: `MCF-XXX: título de la tarea`
 
-Descripción generada:
-```
-## Summary
-
-- Cambio realizado
-- Tests verificados
-
-## Links
-
-| Recurso | URL |
-|---------|-----|
-| YouTrack | https://communities.youtrack.cloud/issue/MCF-XXX |
-```
+→ Leer `.agents/templates/pr_template.md`
 
 ### 4b: Mostrar preview
 
@@ -126,17 +109,11 @@ Head: feature/MCF-XXX-descripcion
 
 ### 4c: Esperar "si"
 
-**Esperar "si" o "abort".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 ### 4d: Crear PR
 
-```bash
-gh pr create \
-  --title "MCF-XXX: título" \
-  --body "descripción" \
-  --base development \
-  --head feature/MCF-XXX-descripcion
-```
+→ Leer `.agents/skills/git/create_pr.md`
 
 Mostrar URL del PR.
 
@@ -146,8 +123,10 @@ Mostrar URL del PR.
 
 ### 5a: Generar comentario
 
+→ Leer `.agents/templates/pr_template.md`
+
 ```
-## PR Creado
+## PR Created
 
 PR: {URL_DEL_PR}
 
@@ -167,11 +146,11 @@ PR: {URL_DEL_PR}
 
 ### 5b: Esperar "si"
 
-**Esperar "si" o "abort".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 ### 5c: Comentar
 
-Usar `youtrack_add_issue_comment` con el texto generado.
+→ Leer `.agents/skills/youtrack/add_comment.md`
 
 ---
 
@@ -188,16 +167,11 @@ ADVERTENCIA: Esto mergea a development.
 
 ### 6b: Esperar "si"
 
-**Esperar "si" o "no".**
+→ Leer `.agents/skills/workflow/wait_yes_no.md`
 
 ### 6c: Si "si"
 
-```bash
-gh pr merge --squash
-git push origin --delete feature/MCF-XXX-descripcion
-git branch -d feature/MCF-XXX-descripcion
-rm .context/session_*.md
-```
+→ Leer `.agents/skills/git/merge_pr.md`
 
 ### 6d: Si "no"
 
@@ -217,7 +191,9 @@ https://communities.youtrack.cloud/issue/MCF-XXX
 
 ### 7b: Ejecutar
 
-Usar `youtrack_update_issue` con:
+→ Leer `.agents/skills/youtrack/update_issue.md`
+
+Usar `youtrack_update_issue`:
 ```json
 {
   "issueId": "MCF-XXX",
@@ -230,9 +206,9 @@ Usar `youtrack_update_issue` con:
 ## Resumen Final
 
 ```
-================================================================
+============================================================
 ✅ WORKFLOW COMPLETADO
-================================================================
+============================================================
 
 Tarea: MCF-XXX
 Rama: feature/MCF-XXX-descripcion
@@ -248,8 +224,10 @@ Pasos completados:
 [x] YouTrack Done
 
 Sesión eliminada.
-================================================================
+============================================================
 ```
+
+→ Leer `.agents/skills/session/delete.md`
 
 ---
 
