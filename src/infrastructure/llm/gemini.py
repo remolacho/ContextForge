@@ -1,16 +1,25 @@
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+
 from src.domain.entities import LLMConfig
-from src.domain.interfaces import LLMEngineInterface
+from src.domain.interfaces import LLM, Embeddings, LLMEngineInterface
 
 
 class GeminiLLMEngine(LLMEngineInterface):
     def __init__(self, config: LLMConfig) -> None:
         self._config = config
+        self._llm = ChatGoogleGenerativeAI(
+            model=config.model_version,
+            google_api_key=config.api_key,
+        )
+        self._embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004",
+            google_api_key=config.api_key,
+        )  # type: ignore[call-arg]
 
-    def summarize(self, content: str, max_tokens: int) -> str:
-        raise NotImplementedError("GeminiLLMEngine no implementado aún")
+    @property
+    def llm(self) -> LLM:
+        return self._llm
 
-    def count_tokens(self, text: str) -> int:
-        raise NotImplementedError("GeminiLLMEngine no implementado aún")
-
-    def get_embeddings(self, text: str) -> list[float]:
-        raise NotImplementedError("GeminiLLMEngine no implementado aún")
+    @property
+    def embeddings(self) -> Embeddings:
+        return self._embeddings

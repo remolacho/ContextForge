@@ -1,6 +1,45 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Any, Protocol
 
 from .entities import CacheEntry, ContextItem, ProviderConfig
+
+
+class LLM(Protocol):
+    def get_num_tokens(self, text: str) -> int: ...
+    def invoke(self, input: Any) -> Any: ...
+    def __or__(self, other: Any) -> Any: ...
+
+
+class Embeddings(Protocol):
+    def embed_query(self, text: str) -> list[float]: ...
+
+
+class LLMEngineInterface(ABC):
+    @property
+    @abstractmethod
+    def llm(self) -> LLM: ...
+
+    @property
+    @abstractmethod
+    def embeddings(self) -> Embeddings: ...
+
+
+class TokenizerInterface(ABC):
+    @abstractmethod
+    def count_tokens(self, text: str) -> int: ...
+
+
+class TextProcessingInterface(ABC):
+    @abstractmethod
+    def summarize(self, content: str, max_tokens: int) -> str: ...
+
+    @abstractmethod
+    def count_tokens(self, text: str) -> int: ...
+
+    @abstractmethod
+    def get_embeddings(self, text: str) -> list[float]: ...
 
 
 class ProviderInterface(ABC):
@@ -35,14 +74,3 @@ class CacheRepositoryInterface(ABC):
 
     @abstractmethod
     def invalidate(self, item_id: str, provider_name: str, tool: str) -> None: ...
-
-
-class LLMEngineInterface(ABC):
-    @abstractmethod
-    def summarize(self, content: str, max_tokens: int) -> str: ...
-
-    @abstractmethod
-    def count_tokens(self, text: str) -> int: ...
-
-    @abstractmethod
-    def get_embeddings(self, text: str) -> list[float]: ...
