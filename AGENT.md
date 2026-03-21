@@ -33,18 +33,28 @@ Desarrollador Senior Python con experiencia en:
 - Docker y DevOps
 - Gestión de proyectos con YouTrack
 
-## Skills Disponibles
+## Skills y Reglas Disponibles
 
 | Skill | Descripción |
 |-------|-------------|
-| `class_format.md` | Formato de clases (≤15 líneas/método) |
-| `controllers.md` | Patrón FastAPI controllers |
-| `factories.md` | Patrón Factory |
-| `domain_layer.md` | Entidades, interfaces, excepciones |
-| `builders.md` | ContextItemBuilder, CacheEntryBuilder |
-| `providers.md` | YouTrackProvider, ProviderFactory |
-| `cache.md` | ChromaCacheRepository |
-| `llm.md` | GeminiLLMEngine, Summarized |
+| `interface_layer` | FastAPI controllers, handlers, schemas. |
+| `application_layer` | ContextService (Facade) and specific use cases. |
+| `domain_layer` | Core entities, interfaces (ports), and exceptions. |
+| `infrastructure_layer` | Providers, LLM engines, cache, and builders. |
+| `patterns_architecture` | Clean Architecture, SOLID, and design patterns. |
+
+### Reglas de Desarrollo (skills/rules_develop/)
+
+| Regla | Descripción |
+|-------|-------------|
+| `skills/rules_develop/class_format.md` | Formato de clases (≤15 líneas/método) |
+| `skills/rules_develop/controllers.md` | Patrón FastAPI controllers |
+| `skills/rules_develop/factories.md` | Patrón Factory |
+| `skills/rules_develop/domain_layer.md` | Entidades, interfaces, excepciones |
+| `skills/rules_develop/builders.md` | ContextItemBuilder, CacheEntryBuilder |
+| `skills/rules_develop/providers.md` | YouTrackProvider, ProviderFactory |
+| `skills/rules_develop/cache.md` | ChromaCacheRepository |
+| `skills/rules_develop/llm.md` | GeminiLLMEngine, Summarized |
 
 ---
 
@@ -222,7 +232,7 @@ Antes de FINALIZE, ejecutar:
 make check
 ```
 
-Debe pasar (lint + typecheck + test).
+Debe pasar (lint + typecheck + test) usando el venv del proyecto (`.venv/`).
 
 ---
 

@@ -6,25 +6,20 @@
 
 Leer:
 1. `tasks.md` — Tarea seleccionada
-2. `design.md` — Arquitectura
-3. `requirements.md` — Criterios de aceptación
+2. `docs/init_proyect/requirements.md` — Criterios de aceptación
 
 ---
 
 ### Paso 2: Identificar skill
 
-Basado en la tarea:
-
-| Skill | Cuando |
-|-------|--------|
-| `builders.md` | Builders |
-| `cache.md` | ChromaCacheRepository |
-| `class_format.md` | Cualquiera |
-| `controllers.md` | Controllers FastAPI |
-| `domain_layer.md` | Entidades, Interfaces, Excepciones |
-| `factories.md` | Factory Pattern |
-| `llm.md` | LLM/Gemini |
-| `providers.md` | Proveedores |
+| Skill / Regla | Propósito |
+|-------|------------------|
+| `interface_layer` | Controllers, Handlers, Schemas, FastAPI |
+| `application_layer` | ContextService, Use Cases |
+| `domain_layer` | Entities, Interfaces/Ports, Exceptions |
+| `infrastructure_layer` | Providers, LLM, Cache, Builders, Factories |
+| `patterns_architecture` | Clean Arch, SOLID, Patterns |
+| `skills/rules_develop/*.md` | Reglas específicas de implementación |
 
 Leer skill identificado.
 
