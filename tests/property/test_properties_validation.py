@@ -68,7 +68,7 @@ class TestSettingsValidation:
     @given(api_key=st.one_of(st.just(""), st.just("  "), st.just("\n\t")))
     @settings(max_examples=50)
     def test_empty_llm_api_key_raises_error(self, api_key: str) -> None:
-        settings = Settings(llm_api_key=api_key)
+        settings = Settings(llm_api_key=api_key, _env_file=None)
         try:
             settings.get_llm_config()
             assert False, "Expected ValueError"
@@ -76,14 +76,15 @@ class TestSettingsValidation:
             assert "LLM_API_KEY" in str(e)
 
     def test_valid_llm_config_returned(self) -> None:
-        settings = Settings(llm_api_key="test-key-123")
+        settings = Settings(llm_api_key="test-key-123", _env_file=None)
         config = settings.get_llm_config()
         assert isinstance(config, LLMConfig)
         assert config.api_key == "test-key-123"
         assert config.engine_type == "gemini"
 
     def test_default_values(self) -> None:
-        settings = Settings(llm_api_key="valid-key")
+        # We use _env_file=None to ensure we testing the defaults in the class, not the local .env
+        settings = Settings(llm_api_key="valid-key", _env_file=None)
         assert settings.llm_engine == "gemini"
         assert settings.llm_model_version == "gemini-2.5-flash-lite"
         assert settings.chroma_host == "chromadb"

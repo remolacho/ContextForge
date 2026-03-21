@@ -1,3 +1,7 @@
+---
+description: 
+---
+
 # Workflow: Fuente de Tareas
 
 ## Regla Principal
@@ -12,7 +16,7 @@
 
 ```
 Proporciona la ruta al archivo de tareas (.md):
-Ejemplo: .kiro/specs/contextforge/tasks.md
+Ejemplo: .specs/contextforge/tasks.md
 ```
 
 **Esperar respuesta.**

@@ -10,11 +10,11 @@ class Routes:
         self._deps = deps
 
     def register(self) -> None:
-        router = APIRouter(responses={404: {"description": "Not found"}})
-
+        mcp_router = APIRouter(responses={404: {"description": "Not found"}})
         self._app.include_router(
-            MCPController(router, **self._deps).router,
+            MCPController(mcp_router, **self._deps).router,
             prefix="/mcp",
         )
 
-        self._app.include_router(HealthController(router).router)
+        health_router = APIRouter(responses={404: {"description": "Not found"}})
+        self._app.include_router(HealthController(health_router).router)
