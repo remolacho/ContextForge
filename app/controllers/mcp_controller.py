@@ -25,12 +25,20 @@ class MCPController(ApplicationController):
         @self.router.post(
             "/",
             status_code=status.HTTP_200_OK,
+            summary="Handle MCP Protocol Messages",
+            description="Process Model Context Protocol (MCP) requests including initialize, tools/list, and tools/call.",
             responses={
                 400: {"model": ErrorResponse, "description": "Método desconocido"},
                 422: {"model": ErrorResponse, "description": "Error de dominio"},
             },
         )
         async def handle_mcp(request: ToolCallRequest):
+            """
+            Handles incoming JSON-RPC style messages for MCP operations.
+            - `initialize`: Initialize session and providers.
+            - `tools/list`: List all available tools.
+            - `tools/call`: Execute a specific tool with parameters.
+            """
             if request.method == "initialize":
                 providers = (
                     request.params.get("clientInfo", {}).get("config", {}).get("providers", {})
@@ -69,6 +77,12 @@ class MCPController(ApplicationController):
 
             return {"message": f"Método '{request.method}' no soportado"}
 
-        @self.router.get("/", status_code=status.HTTP_200_OK)
+        @self.router.get(
+            "/",
+            status_code=status.HTTP_200_OK,
+            summary="SSE Connection Status",
+            description="Returns status information for the Server-Sent Events (SSE) connection.",
+        )
         async def mcp_sse():
+            """Check the status of the SSE communication channel."""
             return {"message": "SSE endpoint activo"}

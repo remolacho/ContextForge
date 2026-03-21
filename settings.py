@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     chroma_port: int = 8000
 
     mcp_port: int = 3000
+    log_level: str = "INFO"
+    tokenizer_encoding: str = "cl100k_base"
 
     def get_llm_config(self) -> LLMConfig:
         if not self.llm_api_key or not self.llm_api_key.strip():

@@ -31,3 +31,17 @@ class ToolCallRequest(BaseModel):
     id: str | int | None = None
     method: str
     params: dict[str, Any] = {}
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "tools/call",
+                "params": {
+                    "name": "summarize",
+                    "arguments": {"text": "Long text to summarize..."},
+                },
+            }
+        }
+    }

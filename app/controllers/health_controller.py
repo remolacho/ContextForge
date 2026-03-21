@@ -6,6 +6,7 @@ class HealthController(ApplicationController):
         super().__init__(router)
         self.router.tags = ["Health"]
 
-        @self.router.get("/health")
+        @self.router.get("/health", summary="Check Server Health")
         async def health():
+            """Returns the current operational status of the server."""
             return {"status": "ok"}
