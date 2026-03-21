@@ -13,7 +13,7 @@
 
 ## Validación
 
-Verificar PLAN completado en sesión.
+→ Leer `.agents/skills/workflow/validate_previous_step.md`
 
 Si no completado → Error: "Completa PLAN primero"
 
@@ -21,9 +21,7 @@ Si no completado → Error: "Completa PLAN primero"
 
 ## Leer sesión activa
 
-```bash
-ls -la .context/session_*.md | tail -1
-```
+→ Leer `.agents/skills/session/read.md`
 
 Mostrar resumen de progreso.
 
@@ -36,28 +34,32 @@ Mostrar resumen de progreso.
 #### 1. MOSTRAR descripción
 
 ```
-================================================================
+============================================================
 PASO N DE M: [nombre del paso]
-================================================================
+============================================================
 
 Descripción: ...
 Archivos: ...
 
-Skill aplicable: ...
-================================================================
+Reglas aplicables: .agents/rules/*.md
+============================================================
 ```
+
+→ Leer `.agents/skills/workflow/identify_rules.md`
 
 #### 2. ESPERAR "next"
 
-**Esperar "next" o "abort".**
+→ Leer `.agents/skills/workflow/wait_next.md`
 
 #### 3. EJECUTAR
 
 1. Ejecutar código
-2. make check
+2. → Leer `.agents/skills/checks/make_check.md`
 3. Reportar resultado
 
 #### 4. Si FALLA
+
+→ Leer `.agents/skills/workflow/wait_abort.md`
 
 ```
 ERROR: make check FALLÓ
@@ -71,6 +73,8 @@ Esperar "retry" o "abort".
 
 #### 5. Si PASA
 
+→ Leer `.agents/skills/session/update.md`
+
 Marcar paso completado en sesión.
 
 ---
@@ -79,11 +83,7 @@ Marcar paso completado en sesión.
 
 Después de completar todos los pasos:
 
-```bash
-make lint
-make typecheck
-make test
-```
+→ Leer `.agents/skills/checks/make_check.md`
 
 Mostrar resultados.
 
@@ -91,7 +91,7 @@ Mostrar resultados.
 
 ## Continuar
 
-Esperar "next" para continuar a FINALIZE.
+→ Leer `.agents/skills/workflow/wait_next.md`
 
 → Leer `finalize_workflow.md`
 
@@ -101,7 +101,7 @@ Esperar "next" para continuar a FINALIZE.
 
 | Comando | Qué |
 |---------|-----|
-| `make check` | lint + typecheck + test |
-| `next` | Siguiente paso |
-| `abort` | Detener |
-| `retry` | Reintentar make check |
+| make check | lint + typecheck + test |
+| next | Siguiente paso |
+| abort | Detener |
+| retry | Reintentar make check |

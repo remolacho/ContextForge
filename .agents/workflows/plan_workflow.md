@@ -6,26 +6,23 @@
 
 Leer:
 1. `tasks.md` — Tarea seleccionada
-2. `docs/init_proyect/requirements.md` — Criterios de aceptación
+2. `.agents/docs/init_proyect/requirements.md` — Criterios de aceptación
 
 ---
 
-### Paso 2: Identificar skill
+### Paso 2: Identificar reglas aplicables
 
-| Skill / Regla | Propósito |
+→ Leer `.agents/skills/workflow/identify_rules.md`
+
+| Regla | Propósito |
 |-------|------------------|
-| `interface_layer` | Controllers, Handlers, Schemas, FastAPI |
-| `application_layer` | ContextService, Use Cases |
-| `domain_layer` | Entities, Interfaces/Ports, Exceptions |
-| `infrastructure_layer` | Providers, LLM, Cache, Builders, Factories |
-| `patterns_architecture` | Clean Arch, SOLID, Patterns |
-| `skills/rules_develop/*.md` | Reglas específicas de implementación |
-
-Leer skill identificado.
+| `.agents/rules/*.md` | Reglas específicas de implementación |
 
 ---
 
 ### Paso 3: Crear plan
+
+→ Leer `.agents/skills/workflow/generate_plan.md`
 
 Dividir en pasos:
 - Archivo(s) a crear
@@ -38,7 +35,7 @@ Dividir en pasos:
 
 ```
 PLAN DE IMPLEMENTACIÓN
-================================================================
+============================================================
 Tarea: MCF-XXX
 Rama: feature/MCF-XXX-descripcion / hotfix/MCF-XXX-descripcion
 
@@ -46,12 +43,16 @@ PASOS:
 [1] Crear archivo X
 [2] Implementar funcionalidad Y
 [3] Escribir tests
-================================================================
+============================================================
 ```
+
+→ Leer `.agents/templates/plan_template.md`
 
 ---
 
 ### Paso 5: Crear rama
+
+→ Leer `.agents/skills/git/create_branch.md`
 
 ```bash
 # feature
@@ -65,6 +66,8 @@ git checkout -b hotfix/MCF-XXX-descripcion main
 
 ### Paso 6: Actualizar YouTrack
 
+→ Leer `.agents/skills/youtrack/update_issue.md`
+
 Usar `youtrack_update_issue`:
 - Cambiar estado a "En curso"
 
@@ -72,13 +75,13 @@ Usar `youtrack_update_issue`:
 
 ### Paso 7: Esperar "next"
 
-```
-================================================================
-Plan listo. Responder 'next' para iniciar ejecución.
-================================================================
-```
+→ Leer `.agents/skills/workflow/wait_next.md`
 
-**Esperar "next" o "stop".**
+```
+============================================================
+Plan listo. Responder 'next' para iniciar ejecución.
+============================================================
+```
 
 ---
 

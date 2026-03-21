@@ -9,7 +9,7 @@
 | **Tarea** | {título de la tarea} |
 | **ID** | {MCF-XXX} |
 | **Rama** | {feature/MCF-XXX-descripcion} |
-| **Skill** | {skill-aplicable.md} |
+| **Regla** | {regla-aplicable.md} |
 | **YouTrack** | https://communities.youtrack.cloud/issue/{MCF-XXX} |
 
 ---
@@ -22,7 +22,7 @@
 
 ## Pasos de Implementación
 
-| # | Descripción | Archivos | Skill |
+| # | Descripción | Archivos | Regla |
 |---|-------------|----------|-------|
 | 1 | ... | ... | ... |
 | 2 | ... | ... | ... |
@@ -42,7 +42,7 @@
 | CREAR | `src/...` |
 | MODIFICAR | `src/...` |
 
-**Skill:** {skill aplicable}
+**Regla:** {regla aplicable}
 
 ---
 
