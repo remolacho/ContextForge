@@ -26,7 +26,10 @@ class MCPController(ApplicationController):
             "/",
             status_code=status.HTTP_200_OK,
             summary="Handle MCP Protocol Messages",
-            description="Process Model Context Protocol (MCP) requests including initialize, tools/list, and tools/call.",
+            description=(
+                "Process Model Context Protocol (MCP) requests "
+                "including initialize, tools/list, and tools/call."
+            ),
             responses={
                 400: {"model": ErrorResponse, "description": "Método desconocido"},
                 422: {"model": ErrorResponse, "description": "Error de dominio"},
