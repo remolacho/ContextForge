@@ -1,39 +1,39 @@
 # Plantilla: Pull Request
 
+## Uso
+
+Esta plantilla se usa dinámicamente en el workflow de finalización.
+El agente genera el contenido basándose en la sesión activa.
+
+---
+
 ## Título
 
 ```
-{MCF-XXX}: {descripción breve de la tarea}
+MCF-{ID}: {título de la tarea}
 ```
 
-**Ejemplo:** `MCF-123: Implementar ContextItemBuilder`
-
 ---
 
-## Body
+## Body (generado dinámicamente)
 
-### Summary
+El agente genera:
 
-{puntos clave de la implementación}
+```markdown
+## Summary
 
-**Ejemplo:**
-- Implementar ContextItemBuilder con API fluida para construir ContextItem
-- Implementar CacheEntryBuilder con API fluida para construir CacheEntry
-- Agregar property tests para verificar hash SHA-256 determinista
+- {cambio 1 realizado en EXECUTE}
+- {cambio 2 realizado en EXECUTE}
+- Tests agregados/verificados
 
----
-
-### Changes
+## Changes
 
 | Tipo | Archivos |
 |------|----------|
-| Creados | `src/infrastructure/builders/context_item.py` |
-| Creados | `src/infrastructure/builders/cache_entry.py` |
-| Creados | `tests/property/test_properties_builders.py` |
+| Creados | archivo1.py |
+| Modificados | archivo2.py |
 
----
-
-### Verification
+## Verification
 
 | Verificación | Estado |
 |--------------|--------|
@@ -41,34 +41,27 @@
 | Typecheck (`make typecheck`) | ✅ passed |
 | Tests (`make test`) | ✅ passed |
 
-**Comando completo:**
-```bash
-make check
-```
-
----
-
-### Links
+## Links
 
 | Recurso | URL |
 |---------|-----|
 | YouTrack | https://communities.youtrack.cloud/issue/{MCF-XXX} |
 | Sprint | https://communities.youtrack.cloud/agiles/195-1/current |
+```
 
 ---
 
-## Metadatos (auto-llenados por gh)
+## Metadatos
 
 - **Base:** development (feature) / main (hotfix)
 - **Head:** feature/{MCF-XXX}-descripcion
-- **Commits:** 1 (squash)
+- **Commits:** N → 1 (squash automático por GitHub)
 
 ---
 
-## Checklist Pre-PR
+## Verificación Pre-PR
 
-- [ ] make check pasa localmente
-- [ ] Tests nuevos incluidos
+- [ ] `make check` pasa localmente
+- [ ] Commits en rama: N (serán squash a 1)
 - [ ] ID de YouTrack en título
-- [ ] Descripción clara de cambios
-- [ ] Commits squashed a 1
+- [ ] Descripción refleja lo realizado en EXECUTE

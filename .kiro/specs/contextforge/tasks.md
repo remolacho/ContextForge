@@ -496,10 +496,10 @@ Implementación incremental de ContextForge siguiendo Clean Architecture: primer
     - _Ver `requirements.md`: Req. 1 — Inicialización MCP (§1), Req. 2 — Config LLM (§2), Req. 10 — ChromaDB (§3), Req. 11 — Docker (§3)_
     - **Commit:** `df63c18` - Punto de entrada FastAPI implementado
 
-- [ ] 15. Implementar property tests de caché
+- [x] 15. Implementar property tests de caché
   > Tests que verifican el comportamiento del sistema de caché de extremo a extremo: que los datos se guardan y recuperan correctamente, y que la caché se invalida cuando el contenido cambia.
 
-  - [ ]* 15.1 Escribir property tests para comportamiento de caché
+  - [x]* 15.1 Escribir property tests para comportamiento de caché
     > Verifica las propiedades fundamentales del sistema de caché usando mocks de ChromaDB.
     - Archivo: `tests/property/test_properties_cache.py`
     - **Propiedad 3:** Para cualquier `CacheEntry` almacenada con `store()`, una llamada inmediata a `lookup()` con los mismos parámetros siempre retorna la misma entrada con `from_cache=True` (round-trip).
